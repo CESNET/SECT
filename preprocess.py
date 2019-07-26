@@ -1,38 +1,35 @@
 import json
+import os.path
 import datetime
 import pandas as pd
 
-#%%
-def dataset_write(ip_vect,org,fname):
+
+def dataset_write_old(fname, data):
+    ip_vect=data['ips']
 
     for k in ip_vect.keys():
         ip_vect[k] = sorted(set(ip_vect[k]))
 
-    inv_org = {v: k for k, v in org.items()}
+    origins=data['origins']
     fmt = '%Y-%m-%d %H:%M:%S%z'
 
-    with open('./data/'+fname, 'w') as f:
-        for key, val in ip_vect.items():
-            print('{}\'{}\': ['.format('{',key),file=f,end='')
-            for pair in val:
-                print('(\'{}\',\'{}\'),'.format(
-                    inv_org[pair[1]],
-                    datetime.datetime.fromtimestamp(pair[0]).strftime(fmt)),file=f,end='')
-            print(']}',file=f)
+    f = open(fname+'sources.txt', 'w')
+    g = open(fname+'detected_ips.txt', 'w')
+    for key, val in ip_vect.items():
+        print('{}\'{}\': ['.format('{', key), file=f, end='')
+        print('{}\'{}\': ['.format('{', key), file=g, end='')
 
-#    with open('./data/'+fname, 'w') as f:
-#        for key in ip_vect:
-#            json.dump({key:str(ip_vect[key])}, f)
-#            print('',file=f)
-#%%
-def extract_set(f):
+        for pair in val:
+            timestr=datetime.datetime.fromtimestamp(pair[0]).strftime(fmt)
+            print('(\'{}\',\'{}\')'.format(origins[pair[1]], timestr),
+                  file=f, end=',')
+            print('\'{}\''.format(timestr), file=g, end=',')
 
-    origins = set()
-    for line in f:
-        X = json.loads(line)
-        origins.add(X['Node'][0]['Name'])
-    return origins
-#%%
+        print(']}', file=f)
+        print(']}', file=g)
+    f.close()
+    g.close()
+
 def extract_features(ip_vect, org):
 
     inv_org = {v: k for k, v in org.items()}
@@ -49,138 +46,139 @@ def extract_features(ip_vect, org):
 #Todo repair so it return ips as indexes
     feat=pd.DataFrame(feat)
     return feat
-#%%
+
+#%% Helper functions
+
+def extract_ip(x):
+    if 'Source' in x.keys():
+        ip = x['Source'][0].get('IP4', [''])[0]
+        if ip is '':
+            ip = x['Source'][0].get('IP6', [''])[0]
+        if ip is '':
+            raise ValueError('Failed to extract IP address')
+    else:
+        raise ValueError('Failed to access Source record while extracting IP address')
+    return ip
+
+
+def extract_time(x, window):
+    occ_time = x.get('EventTime', '')
+    if occ_time is '':
+        occ_time = x.get('DetectTime', '')
+    if occ_time is '':
+        raise ValueError('Failed to extract EventTime or DetecTime timestamp')
+
+    fmt = '%Y-%m-%d'
+
+    if 'T' in occ_time:
+        fmt=fmt+'T'
+    else:
+        fmt=fmt+' '
+
+    fmt=fmt+'%H:%M:%S'
+    if '.' in occ_time:
+        fmt=fmt+'.%f'
+    fmt=fmt+'%z'
+
+    try:
+        timestamp = int(datetime.datetime.strptime(occ_time, fmt).timestamp())
+    except ValueError:
+        raise
+
+    if window['min'] < 0:
+        window['min'] = timestamp
+    elif timestamp < window['min']:
+        window['min'] = timestamp
+    if window['max'] < timestamp:
+        window['max'] = timestamp
+
+    return timestamp
+
 
 def preprocess(datafile):
 
-    with open('./data/week03_sorted.ip','r') as ips:
-        ip_vect={ip.strip(): [] for ip in ips}
+    res = {}
+    origins = {}
+    types = {}
+    ip_vect = {}
+    window = dict(min=-1, max=0)
 
-    with open('./data/origins.txt','r') as org:
-        lst=json.load(org)
+    origins_n = -1
+    types_n = -1
 
-    org={name: val for (name, val) in zip(lst, range(0,len(lst)))}
+    total = 0
+    proc = 0
 
-    feat=pd.DataFrame(columns=['ip','t_fisrt']+lst)
-    feat['ip']=pd.Series(ip_vect.keys())
+    origin_stats={}
 
-    with open('./data/'+datafile) as data:
-        cnt = 0
-        proc = 0
+    with open(datafile) as data:
         for line in data:
-            X = json.loads(line)
-            if 'Source' in X.keys():
-                ip = X['Source'][0].get('IP4', [''])[0]
-                if ip is '':
-                    ip = X['Source'][0].get('IP6', [''])[0]
-                if ip is '':
-                    cnt = cnt + 1
-                    continue
+            total = total+1
+            x = json.loads(line)
+            try:
+                name = x['Node'][0]['Name']
+                category = x.get('Category', ['None'])[0]
 
-                occ_time = X.get('EventTime', '')
-                if occ_time is '':
-                    occ_time = X.get('DetectTime', '')
-                if occ_time is '':
-                    cnt = cnt + 1
-                    continue
+                # Gather per origin statistics
+                n = origin_stats.get(name, {})
+                val = n.get(category,0)
+                n.update({category: val+1})
+                origin_stats[name] = n
 
-                # occ_time2=occ_time[0:19]
+                ip = extract_ip(x)
 
-                fmt = '%Y-%m-%d %H:%M:%S%z'
+                timestamp = extract_time(x, window)
 
-                if 'T' in occ_time:
-                    if '.' in occ_time:
-                        fmt = '%Y-%m-%dT%H:%M:%S.%f%z'
-                    else:
-                        fmt = '%Y-%m-%dT%H:%M:%S%z'
-                elif '.' in occ_time:
-                    fmt = '%Y-%m-%d %H:%M:%S.%f%z'
+                mark = origins.get(name, origins_n+1)
+                if mark > origins_n:
+                    origins[name] = origins_n+1
+                    origins_n = origins_n+1
 
-                try:
-                    occ_time2 = datetime.datetime.strptime(occ_time, fmt)
-                except ValueError:
-                    cnt = cnt + 1
-                    continue
-
-                event=X['Node'][0]['Name']
-                mark=org.get(event,'')
-                ip_vect[ip].append(tuple([mark, int(occ_time2.timestamp())]))
-
-                feat.loc[feat['ip'] == ip, event] = feat.loc[feat['ip'] == ip, event]+1
+                type = types.get(category, types_n + 1)
+                if type > types_n:
+                    types[category] = types_n + 1
+                    types_n = types_n + 1
+                    
+                # Encode reduced data
+                v = ip_vect.get(ip, [])
+                v.append(tuple([timestamp, mark, type]))
+                ip_vect[ip] = v
 
                 proc = proc + 1
+            except ValueError as err:
+                print(err, end=', ')
+                print('while processing line {}'.format(total))
+                continue
 
-            if proc > 10000:
-                break
+    res['timespan'] = window
+    res['origins'] = {v: k for k, v in origins.items()}
+    res['types'] = {v: k for k, v in types.items()}
+    res['origin_stats'] = origin_stats
+    res['ips'] = ip_vect
 
-    print('Processed {} % of events'.format(100*proc/cnt))
-    return [ip_vect, feat]
+
+    print('Processed {} % of events'.format(100*proc/total))
+    return res
+
+
+if __name__ == '__main__':
+
+    batch={}
+    for day in range(11,18):
+        filename = './data/2019-03-{}.idea'.format(day)
+        #filename = './data/week03.idea'
+
+        res = preprocess(filename)
+
+        dirfile = os.path.split(filename)
+        name, suffix = dirfile[1].split('.')
+
+        filename = dirfile[0]+'/'+name
+
+        #dataset_write_old(filename, res)
+
+        f=open(filename+'_prep.json', 'w')
+        json.dump(res, f)
+
+        batch[os.path.split(filename)[1]]=res
 #%%
-def preprocess2(datafile):
-
-#Todo extract if not available
-    with open('./data/week03_sorted.ip','r') as ips:
-        ip_vect={ip.strip(): [] for ip in ips}
-
-    with open('./data/origins.txt','r') as org:
-        lst=json.load(org)
-
-    org={name: val for (name, val) in zip(lst, range(0,len(lst)))}
-
-    # feat=pd.DataFrame(columns=['ip','t_fisrt']+lst)
-    # feat['ip']=pd.Series(ip_vect.keys())
-
-    with open('./data/'+datafile) as data:
-        cnt = 0
-        proc = 0
-        for line in data:
-            cnt=cnt+1
-            X = json.loads(line)
-            if 'Source' in X.keys():
-                ip = X['Source'][0].get('IP4', [''])[0]
-                if ip is '':
-                    ip = X['Source'][0].get('IP6', [''])[0]
-                if ip is '':
-                    continue
-
-                occ_time = X.get('EventTime', '')
-                if occ_time is '':
-                    occ_time = X.get('DetectTime', '')
-                if occ_time is '':
-                    continue
-
-                # occ_time2=occ_time[0:19]
-
-                fmt = '%Y-%m-%d %H:%M:%S%z'
-
-                if 'T' in occ_time:
-                    if '.' in occ_time:
-                        fmt = '%Y-%m-%dT%H:%M:%S.%f%z'
-                    else:
-                        fmt = '%Y-%m-%dT%H:%M:%S%z'
-                elif '.' in occ_time:
-                    fmt = '%Y-%m-%d %H:%M:%S.%f%z'
-
-                try:
-                    occ_time2 = datetime.datetime.strptime(occ_time, fmt)
-                except ValueError:
-                    continue
-
-                event=X['Node'][0]['Name']
-                mark=org.get(event,'')
-                ip_vect[ip].append(tuple([int(occ_time2.timestamp()),mark]))
-
-                #feat.loc[feat['ip'] == ip, event] = feat.loc[feat['ip'] == ip, event]+1
-
-                proc = proc + 1
-
-    print('Processed {} % of events'.format(100*proc/cnt))
-    return [ip_vect, org]
-
-#%%
-if __name__=='__main__':
-
-    [ip_vect,org] = preprocess2('week03.idea')
-    dataset_write(ip_vect,org,'week03_sources.txt')
-
-    #feat.head()
