@@ -8,7 +8,6 @@ import ipaddress
 
 class Correlations:
     """ Class for creating time correlated groups """
-
     def __init__(self, search_from, search_to, atacks_minimum=10,
                  time_offset=40, records_get=None):
         """ Initialize class Correlations
@@ -30,7 +29,7 @@ class Correlations:
         self.index_sparse_matrix = {}
         self.corr_groups = []
 
-        logging.basicConfig(filename='logs.log', level=logging.ERROR,
+        logging.basicConfig(filename='./data/logs.log', level=logging.ERROR,
                             format='%(asctime)s %(levelname)s %(name)s %(message)s')
         self.logger = logging.getLogger(__name__)
 
@@ -49,11 +48,13 @@ class Correlations:
         :return: dictionary in format {IP : [detected time stamps]}
         """
         records = {}
-        for row in open("./data/detected_ips.txt", "r"):
-            dictionary = ast.literal_eval(row)
-            ip = next(iter(dictionary))
-            times = sorted(dictionary[ip])
-            records[ip] = times
+        with open("./data/detected_ips.txt", "r") as f:
+            for row in f:
+                dictionary = ast.literal_eval(row)
+
+                for ip in dictionary:
+                    times = sorted(dictionary[ip])
+                    records[ip] = times
 
         new_records = {}
         for ip in records:
@@ -305,9 +306,22 @@ class Correlations:
                            + "\n")
             file.close()
 
+def rec_get(fname='./data/week03_detected_ips.txt'):
+    with open(fname) as f:
+        rec={}
+        for line in f:
+            tmp = ast.literal_eval(line)
+            for k in tmp:
+                l=[]
+                for time in tmp[k]:
+                    l.append(datetime.datetime.fromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S'))
+                tmp[k]=l
+            rec.update(tmp)
+    return rec
+
 if __name__=='__main__':
     start_time = time.time()
-    korelace = Correlations("2018-05-30 22:38:08", "2018-05-31 01:59:59")
+    korelace = Correlations("2019-03-11 00:00:00", "2019-03-11 00:10:00", atacks_minimum=2, records_get=rec_get)
     korelace()
 
     print("--- %s seconds ---" % (time.time() - start_time))
