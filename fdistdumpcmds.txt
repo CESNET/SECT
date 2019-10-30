@@ -1,0 +1,12 @@
+
+#connect to benefizio then to dc, from there run following
+...
+https://www.python.org/dev/peps/pep-0324/
+...
+import sys
+import subprocess
+theproc = subprocess.Popen("ssh benefizio", shell = True)
+theproc.communicate()
+
+
+cd /media/flow/original/safeguard/ && mpiexec -hosts dc1,dc1,dc2,dc3 -n 8 fdistdump_mpich live/channels/nix_zikova live/channels/nix_dctower live/channels/tis live/channels/geant live/channels/amsix live/channels/sanet live/channels/aconet live/channels/pioneer live/channels/other --output-rich-header -f 'any' -T 1572357600\#1572362100 -l 100 -a srcip,dstip -o flows\#desc --output-format=pretty --output-volume-conv=metric-prefix --output-items=r,p --time-zone="Europe/Bratislava"
