@@ -4,12 +4,13 @@ import logging
 import shutil
 import ast
 import ipaddress
+import json
 
 
 class Correlations:
     """ Class for creating time correlated groups """
     def __init__(self, search_from, search_to, atacks_minimum=10,
-                 time_offset=40, records_get=None, fname='./data'):
+                 time_offset=40, records_get=None, fname='./data/'):
         """ Initialize class Correlations
         :param search_from: Time from witch the search begins
         :param search_to: Time where the search ends
@@ -18,8 +19,10 @@ class Correlations:
         equal to time_offset
         :param records_get: Getter for records for each IP in dict format
         """
-        self.search_from = search_from
-        self.search_to = search_to
+        self.search_from = datetime.datetime.strptime(search_from, '%Y-%m-%d %H:%M:%S%z').timestamp()
+        self.search_to = datetime.datetime.strptime(search_to, '%Y-%m-%d %H:%M:%S%z').timestamp()
+        assert search_to > search_from
+
         self.time_offset = time_offset
         self.atacks_minimum = atacks_minimum
         self.time_offset = time_offset
@@ -29,6 +32,8 @@ class Correlations:
         self.index_sparse_matrix = {}
         self.corr_groups = []
         self.fname=fname
+        self.sources = {}
+        self.meta = {}
 
         logging.basicConfig(filename='./data/logs.log', level=logging.ERROR,
                             format='%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -44,26 +49,31 @@ class Correlations:
         self._save_found_correlations()
         print("total correlations --> ", len(self.corr_groups))
 
+    #todo redo to accept new format through pandas
     def _records_get(self, fname):
         """ Getter for records for each IP
         :return: dictionary in format {IP : [detected time stamps]}
         """
-        #Todo prune if after sorting interval does not touch desired time interval
         records = {}
-        with open(fname+"_detected_ips.txt", "r") as f:
-            for row in f:
-                dictionary = ast.literal_eval(row)
+        with open(fname, "r") as f:
+            self.meta = json.load(f)
 
-                for ip in dictionary:
-                    times = sorted(dictionary[ip])
-                    records[ip] = times
+            for ip, vec in self.meta['ips'].items():
+                    times = [val[0] for val in vec]
+                    anoted_times = [tuple([val[1], val[0]]) for val in vec]
+
+                    # skip when activity is out of searched range
+                    if (self.search_to < times[0] or times[-1] < self.search_from):
+                        continue
+                    records[ip] = sorted(set(times))
+                    self.sources[ip] = sorted(set(anoted_times))
 
         new_records = {}
         for ip in records:
             times_in_interval = []
             times = records[ip]
             for time in times:
-                if (self.search_from <= time <= self.search_to): #direct string comparation wtf why so ineffective?
+                if (self.search_from <= time <= self.search_to):
                     times_in_interval.append(time)
             if (len(times_in_interval) >= self.atacks_minimum):
                 new_records[ip] = times_in_interval
@@ -74,18 +84,17 @@ class Correlations:
         """ Method creates index sparse matrixec from records for each IP.
         Matrixec are saved into index_sparse_matrix attribute
         """
-        #Todo rewrite to work with integers right away
         def create_index_sparse_matrix(times):
             """ Function creates index sparse matrix
             :param times: Time records to transform into index sparse matrix
             :return: Index sparse matrix in set
             """
             index_sparse_matrix = []
-            search_from = datetime.datetime.strptime(self.search_from, '%Y-%m-%d %H:%M:%S')
+            #search_from = datetime.datetime(self.search_from, '%Y-%m-%d %H:%M:%S')
             for time in times:
-                difference = datetime.datetime.strptime(time, '%Y-%m-%d %H:%M:%S') - search_from
-                difference = int(difference.total_seconds())
-                index_sparse_matrix.append(difference)
+                #difference = datetime.datetime.fromisoformat(time) - search_from
+                #difference = int(difference.total_seconds())
+                index_sparse_matrix.append(time-self.search_from)
             return set(index_sparse_matrix)
 
         for ip in self.records_for_ips:
@@ -103,6 +112,7 @@ class Correlations:
         """
 
         def is_correlated(matches_length, length_a, length_b):
+            #todo write equivalent to check mere possibillity or correlation
             """ Function decides if two IPs are correlated
             :param matches_length: Amount of times where IPs matches
             :param length_a: Amount of detected times for the first IP
@@ -131,7 +141,8 @@ class Correlations:
                     times_in_matrix_1 = times_in_matrix_1.difference(intersection)
                     matches = list(intersection)
 
-                # todo is it really necessary to do this ?
+                # todo is it really necessary to sort this ?
+                # Might be insignificant
                 times_in_matrix_2 = sorted(times_in_matrix_2)
                 times_in_matrix_1 = sorted(times_in_matrix_1)
 
@@ -163,6 +174,7 @@ class Correlations:
             n -= 1
         return amount
 
+    # warning - super slow, big groups will make the algorithm run impossibly long
     def _find_correlated_groups(self, searching_from, corr_groups):
         """ Method finds correlated groups and saves them into corr_groups
         attribute
@@ -174,12 +186,12 @@ class Correlations:
         copy_corr_groups = corr_groups.copy()
         suspicious_groups = {}
         new_groups = []
-        enought_amount = self._count_amount(searching_from)
-        for tuplet_1 in corr_groups:
-            corr_IPs_1 = tuplet_1[0]
-            copy_corr_groups.remove(tuplet_1)
-            for tuplet_2 in copy_corr_groups:
-                corr_IPs_2 = tuplet_2[0]
+        enough_amount = self._count_amount(searching_from)
+        for tuple_1 in corr_groups:
+            corr_IPs_1 = tuple_1[0]
+            copy_corr_groups.remove(tuple_1)
+            for tuple_2 in copy_corr_groups:
+                corr_IPs_2 = tuple_2[0]
                 intersection = corr_IPs_1.intersection(corr_IPs_2)
                 if (len(intersection) != 0):
                     suspicious_group = corr_IPs_1.union(corr_IPs_2)
@@ -187,14 +199,14 @@ class Correlations:
                         key = self._create_key(suspicious_group)
                         if (key in suspicious_groups):
                             amount = suspicious_groups[key][1] + 1
-                            if (amount == enought_amount):
+                            if (amount == enough_amount):
                                 new_groups.append((set(key),
                                                    suspicious_groups[key][0]))
                             else:
                                 occurrences = suspicious_groups[key][0]
                                 suspicious_groups[key] = (occurrences, amount)
                         else:
-                            suspicious_groups[key] = (tuplet_1[1], 1)
+                            suspicious_groups[key] = (tuple_1[1], 1)
 
         print(searching_from + 1, " -- ", len(new_groups))
 
@@ -230,27 +242,23 @@ class Correlations:
         """
         copy_corr_groups = self.corr_groups.copy()
         new_corr_groups = []
-        for tuplet_1 in self.corr_groups:
-            copy_corr_groups.remove(tuplet_1)
+        for tuple_1 in self.corr_groups:
+            copy_corr_groups.remove(tuple_1)
             flag = True
-            length = len(tuplet_1[0])
-            for tuplet_2 in copy_corr_groups:
-                if (len(tuplet_1[0].intersection(tuplet_2[0])) == length):
+            length = len(tuple_1[0])
+            for tuple_2 in copy_corr_groups:
+                if (len(tuple_1[0].intersection(tuple_2[0])) == length):
                     flag = False
                     break
             if (flag):
-                new_corr_groups.append(tuplet_1)
+                new_corr_groups.append(tuple_1)
         self.corr_groups = new_corr_groups
 
     def _save_found_correlations(self):
         """ Method links detectors which have detected the correlations and
         writes all these informations into files in correlations folder
         """
-        sources = {}
-        with open(self.fname+'_sources.txt', 'r') as f:
-            for line in f:
-                dictionary = ast.literal_eval(line)
-                sources.update(dictionary)
+        sources = self.sources
 
         if (os.path.isdir(self.fname+"_correlations")):
             shutil.rmtree(self.fname+"_correlations", ignore_errors=True)
@@ -263,8 +271,7 @@ class Correlations:
             logging.shutdown()
             sys.exit(1)
 
-        search_from = datetime.datetime.strptime(self.search_from,
-                                                 '%Y-%m-%d %H:%M:%S')
+        #search_from = datetime.datetime.strptime(self.search_from, '%Y-%m-%d %H:%M:%S')
         for correlation in self.corr_groups:
             path = self.fname+"_correlations/"
             concat_1 = ""
@@ -278,10 +285,10 @@ class Correlations:
             write = concat_2 + "\nTimes (" + str(len(correlation[1])) + "):\n"
             times = []
             for time in correlation[1]:
-                tmp = datetime.timedelta(seconds=time)
-                tmp = search_from + tmp
-                times.append(str(tmp))
-                write += str(tmp) + ", "
+                #tmp = datetime.timedelta(seconds=time)
+                tmp = self.search_from + time
+                times.append(tmp)
+                write += str(datetime.datetime.fromtimestamp(tmp)) + ", "
             file.write(write)
 
             file.write("\n\nDetectors:\n")
@@ -305,27 +312,19 @@ class Correlations:
                                 break
 
             for detector in detectors:
-                file.write(str(detector) + " --> " + str(sorted(detectors[detector]))
-                           + "\n")
+                file.write(str(self.meta['origins'][str(detector)]) + " --> " +
+                           str([datetime.datetime.fromtimestamp(val).strftime('%Y-%m-%d %H:%M:%S') for val in sorted(detectors[detector])]) + "\n")
+                #file.write(str(detector) + " --> " + str(sorted(detectors[detector])) + "\n")
+
             file.close()
 
-def rec_get(fname='./data/week03_detected_ips.txt'):
-
-    with open(fname) as f:
-        rec={}
-        for line in f:
-            tmp = ast.literal_eval(line)
-            for k in tmp:
-                l=[]
-                for time in tmp[k]:
-                    l.append(datetime.datetime.fromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S'))
-                tmp[k]=l
-            rec.update(tmp)
-    return rec
 
 if __name__ == '__main__':
     start_time = time.time()
-    korelace = Correlations("2019-03-11 00:30:00", "2019-03-11 01:30:00", atacks_minimum=2, fname='./data/2019-03-11')
+    #korelace = Correlations("2019-03-11 00:30:00", "2019-03-11 01:30:00", atacks_minimum=2, fname='./data/2019-03-11')
+    date = '2019-08-01'
+    korelace = Correlations(date+" 01:30:00Z", date+" 01:59:00Z", atacks_minimum=10, time_offset=15,  fname='./data/'+date+'_prep_.json')
+
     korelace()
 
     print("--- %s seconds ---" % (time.time() - start_time))

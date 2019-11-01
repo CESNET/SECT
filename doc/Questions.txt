@@ -1,0 +1,24 @@
+Co znamenaju jednotlive polia v .idea formate?
+    Hlavne ak pokia obsahuju viacero slovnikov pod Name?
+    Ako to vyhodnocovat
+
+Co znamenaju klastre?
+    Ip generujuce eventy v rovnakom case?
+    Overenie suvislosti ostava nevyriesene.
+
+    Momentalne klastrovnaim ip dostanem zmes informacii o eventoch
+    -ip pocetnost typy eventov zdroje
+
+    --isto sa da vystopovat lokalita ip <- aky by to malo prinos ?
+    --Tomas Cejka navrhol viac zaostrit analyzu a najst jej use case
+        Na co zaostrit a aky by mohol byt usecase ?
+            Zistovanie fals positive detektorov ? Skrz co ?
+
+    Co by ulahcilo interpretaciu klastrov ?
+    Ako vyzera botnet komunikacia ?
+        Vzory skodlivej cinnosti ? Model matching ... Nejak sa urobi ?
+
+        Vyhodnocovanie vysledkov... ktore riesenie je lepsie horsie ?
+
+        Pomohli by anotovane data ?
+        Ako mi pomoze analyza tokov ?

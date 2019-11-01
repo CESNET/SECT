@@ -57,8 +57,6 @@ def inter_arrival(x, thr):
     return [np.std(inter), np.mean(inter)]
 
 
-#Does not merge intervals!. Second column in result marks end of 15 min interval
-#todo maybe merge intervals
 def get_beginning(x, first, agg, offset):
     x=pd.Series(data=np.concatenate(([0], x)), index=range(0-agg,(len(x))*agg,agg))
     thr=x[x > 0].median()
@@ -102,3 +100,16 @@ def plot_clusters(clusters, fingerprint, aggr, file_list, clust_list):
                        file_list[0]).timestamp() + x * aggr).\
                strftime("%b %d %H:%M") for x in range(0, 671, 12)])
 
+
+def new_ips_hourly(ips_in_hour):
+    # ips_in_hour = df[['ip', 'hour']].groupby('hour').agg([set, lambda x: len(set(x))])
+
+    tmp = ips_in_hour.iloc[0, 0]
+    lst = []
+    for a in ips_in_hour.iloc[:, 0]:
+        lst.append((len(set.difference(a, tmp))))
+        tmp = tmp.union(a)
+
+    sns.lineplot(data=np.array(lst))
+    plt.title('Hourly new unique ip\'s')
+    return

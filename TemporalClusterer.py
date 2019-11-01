@@ -94,7 +94,7 @@ class TemporalClusterer:
                 data = data.sample(limit)
                 print("Trying shortened...")
 
-                self.pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
+                pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
                                     columns=self.vect.index,
                                         dtype=np.float16)
 
@@ -107,11 +107,14 @@ class TemporalClusterer:
 
                 self.pairwise = pairwise.loc[matches.index, matches.index]
                 # input empty array -1 not decided if so.
+            else:
+                self.pairwise = pairwise
 
             if len(self.pairwise) > 1:
                 labels = hdbscan.HDBSCAN(
                     min_cluster_size=self.min_cluster_size,
-                    metric='precomputed'
+                    metric='precomputed',
+                    cluster_sellection_method='leaf'
                 ).fit_predict(self.pairwise.astype(np.float)) # why ?
 
                 labels = pd.Series(labels, index=self.pairwise.index)

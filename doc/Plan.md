@@ -14,7 +14,7 @@ Táto práca si dáva za cieľ odhaliť koordinované útoky pomocov botnetov.
  
 ### Predpoklad na overenie
  
-Časová korelácie medzi bezpečnostnými udalosťami značí, že povodcovia sú pravdepodobne koordinovaní
+Časová korelácie medzi bezpečnostnými udalosťami značí, že povodcovia sú pravdepodobne koordinovaní (treba overit)
 
 Overenie by mohlo prebiehať takto. V dc liberoutri a dohľadadú flow záznamy IP adries ktoré boli korelované do rovnakej skupiny. Zo začiatku by overenie šlo ručne, neskor po zistení na čo presnejšie je treba pozerať na daných datách by šlo proces automatizovať.
 

@@ -1,0 +1,12 @@
+
+#connect to benefizio then to dc, from there run following
+...
+https://www.python.org/dev/peps/pep-0324/
+...
+import sys
+import subprocess
+theproc = subprocess.Popen("ssh benefizio", shell = True)
+theproc.communicate()
+
+
+

@@ -17,23 +17,6 @@ import seaborn as sns
 import sys
 import os
 
-# %%
-
-
-def new_ips_hourly(ips_in_hour):
-    # ips_in_hour = df[['ip', 'hour']].groupby('hour').agg([set, lambda x: len(set(x))])
-
-    tmp = ips_in_hour.iloc[0, 0]
-    lst = []
-    for a in ips_in_hour.iloc[:, 0]:
-        lst.append((len(set.difference(a, tmp))))
-        tmp = tmp.union(a)
-
-    sns.lineplot(data=np.array(lst))
-    plt.title('Hourly new unique ip\'s')
-    return
-
-
 #%%
 sns.set(style='white', context='notebook', rc={'figure.figsize': (14, 10)})
 
@@ -53,20 +36,14 @@ df['hour'] = ((df.timestamp - tfrom) / 3600).astype(np.int)
 
 
 # %%
-df['day'] = (df.hour / (24)).astype(np.int)
+df['day'] = (df.hour / (24*3)).astype(np.int)
 lst = df[['ip', 'day']].groupby('ip').agg(lambda x: (list(set(x))))
 
-preclust = pd.DataFrame(data=np.stack(lst.day.apply(get_bin_series, args=[days])), index=lst.index)
+preclust = pd.DataFrame(data=np.stack(lst.day.apply(get_bin_series, args=[np.int(np.ceil(days/3))])), index=lst.index)
 preclust['ip'] = lst.index
-ip_fractions = preclust.groupby(list(range(0, days)))['ip'].apply(list)
+ip_fractions = preclust.groupby(list(range(0, np.int(np.ceil(days/3)))))['ip'].apply(list)
 
-thresh = 50000
 lenvect = ip_fractions.apply(lambda x: len(x))
-
-if lenvect.max() > thresh:
-    print('Chunks too big')
-    #exit(1)
-
 
 aggr=np.int(sys.argv[3]) #aggregate seconds
 c = tc.TemporalClusterer(aggregation=aggr,
@@ -94,7 +71,7 @@ for x in range(0, len(ip_fractions)):
 df['labels']=lls
 
 df.timestamp = np.floor((df.timestamp - df.timestamp.min()) / aggr)
-#%%
+
 
 clusters = (df.loc[df.labels > -1]
             .groupby('labels')
@@ -102,7 +79,7 @@ clusters = (df.loc[df.labels > -1]
             #.rename({'ip': ('ip', 'ip_count'), 'timestamp': ('min', 'max'), 'origin': 'sources', 'type': 'evt_types'})
             )
 
-clusters.sort_values(('ip', '<lambda>'), ascending=False, inplace=True)
+#clusters.sort_values(('ip', '<lambda>'), ascending=False, inplace=True)
 
 
 series = df.loc[df.labels > -1]\
@@ -113,27 +90,35 @@ series = df.loc[df.labels > -1]\
     .agg(list)\
     .apply(lambda x: np.sum(x, axis=0)/len(x))
 
-fingerprint = pd.DataFrame(np.stack(series), index=series.index)
+fingerprint = pd.DataFrame(np.stack(series),
+                           index=series.index,
+                           columns=pd.DatetimeIndex(
+                               pd.date_range(start=file_list[0],
+                                             periods=c.vect_len,
+                                             freq='15T')).strftime('%m/%d-%H:%M'))
+
 
 #ordering = pd.DataFrame(data=np.stack(fingerprint.apply(lambda x: np.correlate(x, x, mode='full')[len(x):len(x)+16], axis=1)), index=fingerprint.index)
+#
+# ordering = pd.DataFrame(data=np\
+#         .stack(fingerprint\
+#         .apply(inter_arrival, args=[0.0], axis=1)),
+#     #lambda x: np.correlate(x, x, mode='full')[len(x):len(x)+16],
+#     index=fingerprint.index)
+#
+# #ordering = ordering.apply(lambda x: x/max(x,axis=1))
+# ordering.sort_values(by=list(ordering.columns), ascending=False, inplace=True)
+#
+# #%%
+# #%matplotlib qt
+#
+# plt.figure()
+# sns.heatmap(data=fingerprint.iloc[ordering.index, :])
+# plt.figure()
+# sns.heatmap(data=fingerprint)
+#
+#
+#
+# get_beginning(fingerprint.iloc[8,:],datetime.datetime.fromisoformat(file_list[0]).timestamp(),aggr,1)
 
-ordering = pd.DataFrame(data=np\
-        .stack(fingerprint\
-        .apply(inter_arrival, args=[0.0], axis=1)),
-    #lambda x: np.correlate(x, x, mode='full')[len(x):len(x)+16],
-    index=fingerprint.index)
-
-#ordering = ordering.apply(lambda x: x/max(x,axis=1))
-ordering.sort_values(by=list(ordering.columns), ascending=False, inplace=True)
-
-#%%
-#%matplotlib qt
-
-plt.figure()
-sns.heatmap(data=fingerprint.iloc[ordering.index, :])
-plt.figure()
-sns.heatmap(data=fingerprint)
-
-
-
-    #get_beginning(fingerprint.iloc[2,:],datetime.datetime.fromisoformat(file_list[0]).timestamp(),aggr,1)
+#todo make script to store results
