@@ -34,7 +34,7 @@ df = df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto),:] #& (df.type 
 #df = df.loc[(df.type != 'Recon.Scanning'),:]
 
 c = tc.TemporalClusterer(min_events=3, min_cluster_size=3, dist_threshold=0.1, max_activity=1, metric='jaccard',
-                         aggregation=300)
+                         aggregation=900)
 df['labels'] = c.fit_transform(df, [])
 
 # %%

@@ -139,7 +139,7 @@ def preprocess(datafile):
     #     for key, val in signs.items():
     #         print('{}:{}'.format(key,val), file=f)
 
-    res = pd.read_csv(StringIO(csv_str))
+    res = pd.read_csv(StringIO(csv_str)) # it is fast :)
 
     dtOrigin = pd.CategoricalDtype(list(origins.keys()), ordered=True)
     dtType = pd.CategoricalDtype(list(etypes.keys()), ordered=True)

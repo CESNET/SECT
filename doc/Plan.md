@@ -110,3 +110,4 @@ Zahladiť kód a zjednodušiť pridanie/odobratie feature pre klastrovanie
  Nebolo by odveci mať obecný korelačný algoritmus pre riedke časové rady. 
  Pak by sa dali zjemnovať korelácie
  Nad eventmi => Nad flow záznamami => Potenciálne nad paketmi
+ vraj to nefunguje - korelacie nad zaznamami

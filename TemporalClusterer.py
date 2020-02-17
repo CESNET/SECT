@@ -68,36 +68,19 @@ class TemporalClusterer:
 
         labels = pd.Series([])
 
-
-
+        limit = 50000
         if len(data) > 0:
             # stack of features with ip in time index
-
-            self.vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
-
-            limit=-1
-            try:
-                pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
-                                        columns=self.vect.index,
-                                    dtype=np.float16)
-
-            except MemoryError as e:
-                print('MemoryError {}'.format(str(e)))
-                print('Number of IPs after filtering when error occurred: {}'.format(len(self.vect)))
-
-                limit = 25000
-                import gc
-                gc.collect()
-
-            if limit > -1:
-                data.sort_values(inplace=True, ascending=False, by=['active'])
+            if len(data) <= limit:
+                self.vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
+            else:
                 data = data.sample(limit)
-                print("Trying shortened...")
+                self.vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
 
-                pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
+
+            pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
                                     columns=self.vect.index,
-                                        dtype=np.float16)
-
+                                dtype=np.float16)
 
             # prune features/distance matrix
             if self.prune:

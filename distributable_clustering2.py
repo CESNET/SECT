@@ -20,7 +20,7 @@ import os
 #%%
 sns.set(style='white', context='notebook', rc={'figure.figsize': (14, 10)})
 
-file_list = [x.date().isoformat() for x in pd.date_range(sys.argv[1],sys.argv[2])]
+file_list = [x.date().isoformat() for x in pd.date_range('2020-01-25', '2020-01-31')]
 days = len(file_list)
 
 df = pd.DataFrame()
@@ -32,7 +32,17 @@ tfrom = datetime.datetime.fromisoformat('{} 00:00:00'.format(file_list[0])).time
 tto = datetime.datetime.fromisoformat('{} 23:59:59'.format(file_list[-1])).timestamp()
 
 df = df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :]
-df['hour'] = ((df.timestamp - tfrom) / 3600).astype(np.int)
+
+IPdf = df.groupby('ip')['timestamp'].agg(lambda x: (list(x)))
+IPevts = IPdf.apply(list.__len__)
+
+plt.figure()
+IPevts.hist(bins=100)
+
+IPevts.loc[IPevts>10].hist(bins=100)
+
+#clip out extremes... and if to analyze them, do it separately
+IPdf = IPdf.loc[IPdf.apply(list.__len__) > 1]
 
 
 # %%
@@ -72,6 +82,8 @@ for x in range(0, len(ip_fractions)):
 df['labels']=lls
 
 df.timestamp = np.floor((df.timestamp - df.timestamp.min()) / aggr)
+
+
 
 
 clusters = (df.loc[df.labels > -1]

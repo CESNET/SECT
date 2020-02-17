@@ -5,8 +5,10 @@ https://www.python.org/dev/peps/pep-0324/
 ...
 import sys
 import subprocess
-theproc = subprocess.Popen("ssh benefizio", shell = True)
+
+theproc = subprocess.Popen("ssh xstoff02@benefizio.liberouter.org -i .ssh/benefizio ls", shell = True)
 theproc.communicate()
 
 
 
+theproc = subprocess.Popen("ssh xstoff02@benefizio.liberouter.org -i .ssh/benefizio ssh dc mpiexec -host dc,dc1,dc2,dc3 fdistdump_mpich -f any -l 10 /media/flow/original/safeguard/live/channels/nix_zikova/2019/10/12/lnf.20191012122000", shell = True)

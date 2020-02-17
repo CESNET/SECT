@@ -113,3 +113,4 @@ def new_ips_hourly(ips_in_hour):
     sns.lineplot(data=np.array(lst))
     plt.title('Hourly new unique ip\'s')
     return
+
