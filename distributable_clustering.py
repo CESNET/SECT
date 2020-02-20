@@ -111,10 +111,7 @@ fingerprint = pd.DataFrame(np.stack(series),
 # ordering.sort_values(by=list(ordering.columns), ascending=False, inplace=True)
 #
 # #%%
-# #%matplotlib qt
-#
-# plt.figure()
-# sns.heatmap(data=fingerprint.iloc[ordering.index, :])
+# #  sns.heatmap(data=fingerprint.iloc[ordering.index, :])
 # plt.figure()
 # sns.heatmap(data=fingerprint)
 #
