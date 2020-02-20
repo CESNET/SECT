@@ -25,7 +25,7 @@ days = len(file_list)
 
 df = pd.DataFrame()
 for file_name in file_list:
-    df = pd.concat([df, pd.read_pickle('./data/' + file_name + '.pcl')], ignore_index=True)
+    df = pd.concat([df, pd.read_pickle(sys.argv[9] + '/' + file_name + '.pcl')], ignore_index=True)
 # %%
 
 tfrom = datetime.datetime.fromisoformat('{} 00:00:00'.format(file_list[0])).timestamp()

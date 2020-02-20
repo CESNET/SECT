@@ -11,7 +11,7 @@ from scipy.spatial.distance import squareform, pdist
 import hdbscan
 
 class TemporalClusterer:
-    def __init__(self, min_events=2, max_activity=0.8, aggregation=900, min_cluster_size=3, dist_threshold=0.05,
+    def __init__(self, min_events=2, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
                  metric='jaccard', prune=True, sample=-1):
 
         # filtering params
@@ -33,7 +33,11 @@ class TemporalClusterer:
 
     def filter(self, x):
         # Put here means to clean data
-        return x
+        return x.loc[(x['active'] > self.min_events & #minimal activity
+                        (x['active'] <= np.ceil(self.max_activity*self.vect_len)) & #maximal activity
+                        (x['blocks'] >= self.min_events)) # pattern requirements
+                        #(data['count'] >= self.min_events)
+                        , :]
 
     def transform(self, df, labels):
 
@@ -53,16 +57,17 @@ class TemporalClusterer:
         data['active'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-        return data
+
+        return filter(data)
 
     def fit_transform(self, x, y):
 
         data = self.transform(x, y)
 
         # filter
-        data = data.loc[
+        data = data.loc[(data['active'] > self.min_events &
                         (data['active'] <= np.ceil(self.max_activity*self.vect_len)) &
-                        (data['blocks'] >= self.min_events)
+                        (data['blocks'] >= self.min_events))
                         #(data['count'] >= self.min_events)
                         , :]
 
