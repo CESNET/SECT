@@ -114,3 +114,16 @@ def new_ips_hourly(ips_in_hour):
     plt.title('Hourly new unique ip\'s')
     return
 
+
+def load_files(wDir, dFrom, dTo):
+    file_list = [x.date().isoformat() for x in pd.date_range(dFrom,dTo)]
+    days = len(file_list)
+
+    df = pd.DataFrame()
+    for file_name in file_list:
+        df = pd.concat([df, pd.read_pickle(wDir + '/' + file_name + '.pcl')], ignore_index=True)
+
+    tfrom = datetime.datetime.fromisoformat('{} 00:00:00'.format(file_list[0])).timestamp()
+    tto = datetime.datetime.fromisoformat('{} 23:59:59'.format(file_list[-1])).timestamp()
+
+    return (df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list)

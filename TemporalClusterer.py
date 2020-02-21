@@ -28,16 +28,16 @@ class TemporalClusterer:
         self.sample = sample
 
         self.vect_len = 0
-        self.vect = pd.DataFrame()
+        self.features = pd.DataFrame()
         self.pairwise = pd.DataFrame()
 
     def filter(self, x):
         # Put here means to clean data
-        return x.loc[(x['active'] > self.min_events & #minimal activity
+        return x[((x['active'] >= self.min_events) & #minimal activity
                         (x['active'] <= np.ceil(self.max_activity*self.vect_len)) & #maximal activity
-                        (x['blocks'] >= self.min_events)) # pattern requirements
+                        (x['blocks'] >= 2)) # pattern requirements
                         #(data['count'] >= self.min_events)
-                        , :]
+                        , :].copy()
 
     def transform(self, df, labels):
 
@@ -57,19 +57,12 @@ class TemporalClusterer:
         data['active'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-
-        return filter(data)
+        return self.filter(data)
 
     def fit_transform(self, x, y):
 
         data = self.transform(x, y)
-
-        # filter
-        data = data.loc[(data['active'] > self.min_events &
-                        (data['active'] <= np.ceil(self.max_activity*self.vect_len)) &
-                        (data['blocks'] >= self.min_events))
-                        #(data['count'] >= self.min_events)
-                        , :]
+        self.features = data
 
         labels = pd.Series([])
 
@@ -77,15 +70,17 @@ class TemporalClusterer:
         if len(data) > 0:
             # stack of features with ip in time index
             if len(data) <= limit:
-                self.vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
+                vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
             else:
-                data = data.sample(limit)
-                self.vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
+                #verify this
+                data = data.sort_values(inplace=True, ascending=False, by=['active', 'blocks'])
 
+                vect = pd.DataFrame(index=data.head(limit).index, data=np.stack(data.head(limit).series))
+                print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
 
-            pairwise = pd.DataFrame(squareform(pdist(self.vect, self.metric)), index=self.vect.index,
-                                    columns=self.vect.index,
-                                dtype=np.float16)
+            pairwise = pd.DataFrame(squareform(pdist(vect, self.metric)), index=vect.index,
+                                    columns=vect.index,
+                                    dtype=np.float16)
 
             # prune features/distance matrix
             if self.prune:
@@ -107,7 +102,22 @@ class TemporalClusterer:
 
                 labels = pd.Series(labels, index=self.pairwise.index)
 
+        self.features['labels'] = labels
+
         clusters = x['ip'].apply(lambda c: labels[c] if c in labels.index else -1)
 
         return clusters
 
+if __name__ == '__main__':
+
+    #Load preprocessed files
+    (df, file_list)=load_files(sys.argv[1], sys.argv[2], sys.argv[3])
+
+
+    tc=TemporalClusterer(sys.argv[4], sys.argv[5], dist_threshold=sys.argv[6])
+    labels=tc.fit_transform(df, [])
+    df['labels']=labels
+    dfip = df.groupby('labels')['ip', 'type', 'origin'].agg(set)
+    #Prepare dataframes
+    data=tc.features.loc[tc.features['labels']>0, :].groupby()
+    vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
