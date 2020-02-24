@@ -31,14 +31,6 @@ class TemporalClusterer:
         self.vect = pd.DataFrame()
         self.pairwise = pd.DataFrame()
 
-    def filter(self, x):
-        # Put here means to clean data
-        return x.loc[(x['active'] > self.min_events & #minimal activity
-                        (x['active'] <= np.ceil(self.max_activity*self.vect_len)) & #maximal activity
-                        (x['blocks'] >= self.min_events)) # pattern requirements
-                        #(data['count'] >= self.min_events)
-                        , :]
-
     def transform(self, df, labels):
 
         df.timestamp = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
@@ -57,8 +49,14 @@ class TemporalClusterer:
         data['active'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
+        data=data.loc[(data['active'] > self.min_events &  # minimal activity
+                  (data['active'] <= np.ceil(self.max_activity * self.vect_len)) &  # maximal activity
+                  (data['blocks'] >= self.min_events))  # pattern requirements
+                # (data['count'] >= self.min_events)
+                  , :]
 
-        return filter(data)
+        return data
+
 
     def fit_transform(self, x, y):
 
