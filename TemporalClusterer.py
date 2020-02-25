@@ -47,11 +47,11 @@ class TemporalClusterer:
 
         # might use expand right away instead of stacking
         data['series'] = data.list.apply(get_bin_series, args=[self.vect_len])
-        data['active'] = data.series.apply(np.sum)
+        data['activity'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-        data = data.loc[((data['active'] > self.min_events) &  # minimal activity
-                  (data['active'] <= np.ceil(self.max_activity * self.vect_len)) &  # maximal activity
+        data = data.loc[((data['activity'] > self.min_events) &  # minimal activity
+                  (data['activity'] <= np.ceil(self.max_activity * self.vect_len)) &  # maximal activity
                   (data['blocks'] >= self.min_events))  # pattern requirements
                 # (data['count'] >= self.min_events)
                   , :]
@@ -73,7 +73,7 @@ class TemporalClusterer:
                 vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
             else:
                 #verify this
-                data = data.sort_values(inplace=True, ascending=False, by=['active', 'blocks'])
+                data = data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
 
                 vect = pd.DataFrame(index=data.head(limit).index, data=np.stack(data.head(limit).series))
                 print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
@@ -84,7 +84,7 @@ class TemporalClusterer:
 
             # prune features/distance matrix
             if self.prune:
-                matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold), raw=True)\
+                matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold))\
                     .where(lambda x: x >= self.min_cluster_size)\
                     .dropna()
 
@@ -96,8 +96,8 @@ class TemporalClusterer:
             if len(self.pairwise) > 1:
                 labels = hdbscan.HDBSCAN(
                     min_cluster_size=self.min_cluster_size,
-                    metric='precomputed'
-                    #cluster_sellection_method='leaf'
+                    metric='precomputed',
+                    cluster_sellection_method='leaf'
                 ).fit_predict(self.pairwise.astype(np.float)) # why ?
 
                 labels = pd.Series(labels, index=self.pairwise.index)
@@ -108,21 +108,51 @@ class TemporalClusterer:
 
         return clusters
 
+    def post_process(self, df, file_list):
+
+        df = df.loc[df['labels'] > -1, :]
+
+        clusters = (df.loc[df.labels > -1]
+                    .groupby('labels')
+                    .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
+                         tfrom=('timestamp', min), tto=('timestamp', max),
+                         origins=('origin', set),
+                         types=('type', set),
+                         )
+                    )
+        # .rename({'ip': ('ip', 'ip_count'), 'timestamp': ('min', 'max'), 'origin': 'sources', 'type': 'evt_types'}))
+
+        # for filtering
+        clusters[['min_blocks', 'min_activity']] = (self.features.groupby('labels').
+                                                    agg(min_blocks=('blocks', min), min_activity=('activity', min)))
+
+        #clusters.sort_values(('size'), ascending=False, inplace=True)
+
+        series = (df.loc[df.labels > -1]
+                  .groupby(['labels', 'ip'])['timestamp']
+                  .agg(list)
+                  .apply(lambda x: np.array(get_bin_series(x, self.vect_len), dtype=np.float))
+                  .groupby('labels')
+                  .agg(list)
+                  .apply(lambda x: np.sum(x, axis=0) / len(x))
+                  )
+
+        series = pd.DataFrame(
+            data=np.stack(series),
+            index=series.index,
+            columns=pd.DatetimeIndex(
+                pd.date_range(start=file_list[0], periods=self.vect_len, freq='15T')).strftime('%m/%d-%H:%M')
+        )
+        return clusters, series
+
 if __name__ == '__main__':
 
     #Load preprocessed files
-    (df, file_list)=load_files(sys.argv[1], sys.argv[2], sys.argv[3])
+    (df, file_list) = load_files(sys.argv[1], sys.argv[2], sys.argv[3])
 
-    tc=TemporalClusterer(sys.argv[4], sys.argv[5], dist_threshold=sys.argv[6])
-    labels=tc.fit_transform(df, [])
-    df['labels']=labels
-    df = df.loc[df['labels']>0,:]
-    dfip = df.groupby('ip').agg({...})
-    dfip['ip']=dfip.index
-    dfip['...'] = tc.features['...']
-    # agreguj adtlacky separatne
-    dfip.groupby('labels')['ip', 'type', 'origin'].agg({...})
-    #Prepare dataframes
-    data=dfip.groupby('labels')['...'].agg(...)
-    #what to do
-    vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
+    tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
+    df['labels'] = tc.fit_transform(df, [])
+    (clusters, series) = tc.post_process(df, file_list)
+
+
+

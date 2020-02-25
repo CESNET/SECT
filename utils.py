@@ -46,20 +46,27 @@ def filter_frame(df, tfrom, tto, agg_secs=900, min_count=5):
     vect = pd.concat([pd.DataFrame(index=data.index, data=np.stack(data.series)), data['count']], axis=1)
 
 
-def dc_liberouter_filter_string(val):
-    return 'ip in {}'.format(list(val)).replace('\'', '')
-
-
 def inter_arrival(x, thr):
-    idxes=np.nonzero(np.diff(x) > thr)
-    idxes=idxes-idxes[0][0] #start from fist event
-    inter=np.diff(idxes)
+    idxes = np.nonzero(np.diff(x) > thr)
+    idxes = np.subtract(idxes, idxes[0][0]) #start from fist event
+    inter = np.diff(idxes)
     return [np.std(inter), np.mean(inter)]
 
 
+def sample_intervals(df, first, aggregation=900, pre_block_pad=1, sample_size=3):
+    first_timestamp=datetime.datetime.fromisoformat(first).timestamp()
+    #intervals=df.apply(lambda x: get_beginning(x, first, aggregation, pre_block_pad).sample(3))
+    intervals = df.apply(lambda x: (pd.DataFrame(get_beginning(x, first=first_timestamp, agg=aggregation, offset=pre_block_pad))
+                         .sample(sample_size)
+                         .applymap(lambda y: pd.Timestamp(y).timestamp()).astype(int)).values
+                         , axis=1)
+
+    return np.array(intervals)
+
+
 def get_beginning(x, first, agg, offset):
-    x=pd.Series(data=np.concatenate(([0], x)), index=range(0-agg,(len(x))*agg,agg))
-    thr=x[x > 0].median()
+    x = pd.Series(data=np.concatenate(([0], x)), index=range(0-agg, (len(x))*agg, agg))
+    thr = x[x > 0].median()
 
     blocks = x[x > thr]
     if len(blocks) < 1:
@@ -67,7 +74,7 @@ def get_beginning(x, first, agg, offset):
 
     gaps = pd.Series(data=np.diff(blocks.index), index = blocks.index[:-1])
 
-    take = blocks[(gaps>offset*agg).index].index
+    take = blocks[(gaps > offset*agg).index].index
 
     block_e = [datetime.datetime.fromtimestamp(val).isoformat()\
                for val in first+np.array(take, dtype=np.int)+agg]
@@ -101,12 +108,12 @@ def plot_clusters(clusters, fingerprint, aggr, file_list, clust_list):
                strftime("%b %d %H:%M") for x in range(0, 671, 12)])
 
 
-def new_ips_hourly(ips_in_hour):
+def new_unique(set_list):
     # ips_in_hour = df[['ip', 'hour']].groupby('hour').agg([set, lambda x: len(set(x))])
 
-    tmp = ips_in_hour.iloc[0, 0]
+    tmp = set_list.iloc[0, 0]
     lst = []
-    for a in ips_in_hour.iloc[:, 0]:
+    for a in set_list.iloc[:, 0]:
         lst.append((len(set.difference(a, tmp))))
         tmp = tmp.union(a)
 

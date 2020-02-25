@@ -9,6 +9,9 @@ else:
 
 import datetime
 
+def dc_liberouter_filter_string(val):
+    return 'ip in {}'.format(list(val)).replace('\'', '')
+
 class dc:
     def __init__(self):
         self.c = Connection(host='dc', user='xstoff02')

@@ -25,5 +25,5 @@ if __name__=='__main__':
     thr = 0.033
 
 
-    x=get_beginning(x, first, agg, offset)
+    x = get_beginning(x, first, agg, offset)
     print(x)
