@@ -49,7 +49,7 @@ class TemporalClusterer:
         data['active'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-        data=data.loc[(data['active'] > self.min_events &  # minimal activity
+        data = data.loc[((data['active'] > self.min_events) &  # minimal activity
                   (data['active'] <= np.ceil(self.max_activity * self.vect_len)) &  # maximal activity
                   (data['blocks'] >= self.min_events))  # pattern requirements
                 # (data['count'] >= self.min_events)
@@ -95,8 +95,8 @@ class TemporalClusterer:
             if len(self.pairwise) > 1:
                 labels = hdbscan.HDBSCAN(
                     min_cluster_size=self.min_cluster_size,
-                    metric='precomputed',
-                    cluster_sellection_method='leaf'
+                    metric='precomputed'
+                    #cluster_sellection_method='leaf'
                 ).fit_predict(self.pairwise.astype(np.float)) # why ?
 
                 labels = pd.Series(labels, index=self.pairwise.index)
@@ -112,11 +112,18 @@ if __name__ == '__main__':
     #Load preprocessed files
     (df, file_list)=load_files(sys.argv[1], sys.argv[2], sys.argv[3])
 
-
     tc=TemporalClusterer(sys.argv[4], sys.argv[5], dist_threshold=sys.argv[6])
     labels=tc.fit_transform(df, [])
     df['labels']=labels
-    dfip = df.groupby('labels')['ip', 'type', 'origin'].agg(set)
+    df = df.loc[df['labels']>0,:]
+    dfip = df.groupby('ip').agg({...})
+    dfip['ip']=dfip.index
+    dfip['...'] = tc.features['...']
+    # agreguj adtlacky separatne
+    dfip.groupby('labels')['ip', 'type', 'origin'].agg({...})
     #Prepare dataframes
-    data=tc.features.loc[tc.features['labels']>0, :].groupby()
+    data=dfip.groupby('labels')['...'].agg(...)
+    #what to do
     vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
+
+

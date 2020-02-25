@@ -21,7 +21,7 @@ class dc:
                     "live/channels/amsix live/channels/sanet live/channels/aconet live/channels/pioneer " \
                     "live/channels/other".split(' ')))
 
-    def filterFlows(self, filter, tFrom, tTo,
+    def filterFlows(self, filter, tFrom, tTo, agg=(),
                     channels=('zikova', 'dctower', 'tis', 'geant', 'amsix', 'sanet', 'aconet', 'pioneer'),
                     limit=10000,
                     fields=('first','packets','bytes','srcip','dstip','srcport','dstport','flags','proto','duration')):
