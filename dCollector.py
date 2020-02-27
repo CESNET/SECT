@@ -1,3 +1,5 @@
+from __future__ import with_statement #was supposed to be used to hide output stream while running
+
 import pandas as pd
 from fabric import Connection
 
@@ -27,7 +29,9 @@ class dc:
     def filterFlows(self, filter, tFrom, tTo, agg=(),
                     channels=('zikova', 'dctower', 'tis', 'geant', 'amsix', 'sanet', 'aconet', 'pioneer'),
                     limit=10000,
-                    fields=('first','packets','bytes','srcip','dstip','srcport','dstport','flags','proto','duration')):
+                    fields=('first', 'packets', 'bytes', 'srcip', 'dstip', 'srcport', 'dstport', 'flags',
+                            'proto', 'duration'),
+                    addr_conv='str', tcpflags_conv='none', proto_conv='none', duration_conv='none'):
 
         channels_s = ''
         for x in channels:
@@ -36,26 +40,29 @@ class dc:
         fields_s = ''
         for x in fields:
             if fields=='':
-                fields_s=x
+                fields_s += x
             else:
-                fields_s =','+x
+                fields_s +=','+x
 
         command = f"fdistdump-ha {channels_s} " \
-                  "/usr/lib64/mpich/bin/mpiexec  /usr/lib64/mpich/bin/fdistdump_mpich --num-threads 8 --output-rich-header " \
+                  "/usr/lib64/mpich/bin/mpiexec  /usr/lib64/mpich/bin/fdistdump_mpich --num-threads 8 "\
+                  " --output-rich-header " \
                   f"-f \"{filter}\" " \
                   f"-T {tFrom}\#{tTo} " \
                   f"-l {limit} " \
-                  "--output-format=csv --output-tcpflags-conv=str --output-addr-conv=str --output-proto-conv=str " \
-                  "--output-duration-conv=str --output-volume-conv=none " \
-                  "--output-items=r --time-zone=\"Europe/Bratislava\"" \
+                  f"--output-format=csv --output-tcpflags-conv={tcpflags_conv} --output-addr-conv={addr_conv} "\
+                  f"--output-proto-conv={proto_conv} " \
+                  f"--output-duration-conv={duration_conv} --output-volume-conv=none " \
+                  "--output-items=r --time-zone=\"Europe/Bratislava\" " \
                   f"--output-fields={fields_s}"
 
 
 
         #result = c.run('mpiexec -host dc,dc1,dc2,dc3 fdistdump_mpich -f any -l 10 ' \
         #               '/media/flow/original/safeguard/live/channels/nix_zikova/2019/10/12/lnf.20191012122000')
-
-        result = self.c.run(f"export PATH={dc.path} && {command}")
+        #with self.c.hide('output'):
+        print(command)
+        result = self.c.run(f"export PATH={dc.path} && {command}", hide='stdout')
         return pd.read_csv(StringIO(result.stdout), sep=',')
 
 
