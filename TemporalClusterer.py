@@ -117,7 +117,7 @@ class TemporalClusterer:
                     .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
                          tfrom=('timestamp', min), tto=('timestamp', max),
                          origins=('origin', set),
-                         types=('type', set),
+                         types=('type', set)
                          )
                     )
         # .rename({'ip': ('ip', 'ip_count'), 'timestamp': ('min', 'max'), 'origin': 'sources', 'type': 'evt_types'}))
