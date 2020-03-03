@@ -7,8 +7,15 @@ from preprocess import *
 
 from scipy.spatial.distance import squareform, pdist
 
+
 #import umap
 import hdbscan
+import dCollector
+import graphing
+
+import plotly.graph_objs as go
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+
 
 class TemporalClusterer:
     def __init__(self, min_events=2, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
@@ -112,12 +119,14 @@ class TemporalClusterer:
 
         df = df.loc[df['labels'] > -1, :]
 
+        df['type'].apply(lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(','))
+
         clusters = (df.loc[df.labels > -1]
                     .groupby('labels')
                     .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
                          tfrom=('timestamp', min), tto=('timestamp', max),
                          origins=('origin', set),
-                         types=('type', set),
+                         types=('type', lambda l: [item for sublist in l for item in sublist]),
                          )
                     )
         # .rename({'ip': ('ip', 'ip_count'), 'timestamp': ('min', 'max'), 'origin': 'sources', 'type': 'evt_types'}))
@@ -137,23 +146,99 @@ class TemporalClusterer:
                   .apply(lambda x: np.sum(x, axis=0) / len(x))
                   )
 
+        #TODO fix annotation to not use frequency
         series = pd.DataFrame(
             data=np.stack(series),
             index=series.index,
             columns=pd.DatetimeIndex(
                 pd.date_range(start=file_list[0], periods=self.vect_len, freq='15T')).strftime('%m/%d-%H:%M')
         )
+
+        #a = clusters['types'].apply(
+        #    lambda x: [y.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(',')
+        #               for y in x])  # .split(','))#a.value_counts()
+        #a = a.apply(lambda l: tuple(set([item for sublist in l for item in sublist])))
+        #a.apply(print)
+
+
+
         return clusters, series
+
 
 if __name__ == '__main__':
 
+    # Import the necessaries libraries
+
+
+    # Set notebook mode to work in offline
+    # from scipy.cluster.hierarchy import dendrogram, linkage
     #Load preprocessed files
+    print("Processing files")
     (df, file_list) = load_files(sys.argv[1], sys.argv[2], sys.argv[3])
 
+    print("Clustering")
     tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
     df['labels'] = tc.fit_transform(df, [])
+    print("Running post process")
     (clusters, series) = tc.post_process(df, file_list)
 
+    #%%
 
-
-
+    # print(clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']])
+    # clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']].hist()
+    #
+    # #%%
+    #
+    # clusters[['ips', 'size']]
+    #
+    # #%%
+    #
+    # sns.heatmap(series.apply(lambda x: np.multiply(x, clusters['size']), axis=0))
+    #
+    # #%%
+    #
+    # sns.heatmap(series)
+    #
+    # #%%
+    #
+    # topx=clusters.sort_values(ascending=False, by='size').head(5)
+    # #max=clusters.loc[clusters['size']==clusters['size'].max(),:].head(5)
+    # intervals = sample_intervals(series.loc[topx.index,:],file_list[0],tc.aggregation)
+    #
+    # benefizio = dCollector.dc()
+    # filter = clusters.loc[topx.index,'ips'].apply(dCollector.dc_liberouter_filter_string).values[0]
+    # res=benefizio.filterFlows(filter, intervals[0][0][0], intervals[0][0][1])
+    # print(res.head())
+    #
+    # #%%
+    #
+    # fig = go.Figure(graphing.genSankey(res.sample(10),['srcip','dstip'],'packets','Sample of packet flows'))
+    #
+    # fig.show()
+    #
+    # #%%
+    #
+    # badIps = clusters.loc[topx.index, 'ips']
+    # print(badIps)
+    # fig = go.Figure(graphing.genSankey(res.loc[res['srcip'].isin(list(badIps.values[0])),:],['srcip','proto'],
+    #                                    'packets', 'Communication by protocols'))
+    # fig.show()
+    #
+    # clusters2.types.apply(lambda x: pd.Series(x)).apply(pd.value_counts).T
+    #
+    # df['type'] = df['type'].apply(
+    #     lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(',')
+    # )
+    #
+    # clusters2.types.apply(lambda x: pd.Series(x)).apply(pd.value_counts)
+    #
+    # df = df.loc[df['labels'] > -1, :]
+    #
+    # clusters2 = (df.loc[df.labels > -1]
+    #              .groupby('labels')
+    #              .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
+    #                   tfrom=('timestamp', min), tto=('timestamp', max),
+    #                   origins=('origin', set),
+    #                   types=('type', lambda l: [item for sublist in l for item in sublist]),
+    #                   )
+    #              )

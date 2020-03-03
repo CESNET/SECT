@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import datetime
+from pathlib import Path
 from preprocess import *
 
 import matplotlib.pyplot as plt
@@ -57,12 +58,18 @@ def inter_arrival(x, thr):
     return [np.std(inter), np.mean(inter)]
 
 
+def sample_first_last_mid(df):
+    if len(df) > 3:
+        return df.iloc[[0, int(len(df)/2), -1], :]
+    else:
+        return df
+
+
 def sample_intervals(df, first, aggregation=900, pre_block_pad=1, sample_size=3):
     first_timestamp = datetime.datetime.strptime(first, dateFormat).timestamp()
     # intervals=df.apply(lambda x: get_beginning(x, first, aggregation, pre_block_pad).sample(3))
     intervals = df.apply(
-        lambda x: (pd.DataFrame(get_intervals(x, first=first_timestamp, agg=aggregation, offset=pre_block_pad))
-                   .head(3)
+        lambda x: (sample_first_last_mid(pd.DataFrame(get_intervals(x, first=first_timestamp, agg=aggregation, offset=pre_block_pad)))
                    .applymap(lambda y: pd.Timestamp(y).timestamp()).astype(int)).values
         , axis=1)
 
@@ -125,17 +132,53 @@ def cumulative_unique_counts(set_list):
     return
 
 
-def load_files(wDir, dFrom, dTo):
-    file_list = [x.date().isoformat() for x in pd.date_range(dFrom, dTo)]
+def load_files(working_dir, date_from, date_to, idea_dir=None):
+
+    if idea_dir == None:
+        idea_dir = working_dir+'\\IDEA'
+
+    file_list = [x.date().isoformat() for x in pd.date_range(date_from, date_to)]
     days = len(file_list)
 
     df = pd.DataFrame()
+
     for file_name in file_list:
-        df = pd.concat([df, pd.read_pickle(wDir + '/' + file_name + '.pcl')], ignore_index=True)
+
+        file_obj = Path(working_dir + '\\' + file_name + '.pcl')
+
+        if file_obj.is_file():
+            df = pd.concat([df, pd.read_pickle(file_obj)], ignore_index=True)
+
+        elif not file_obj.exists():
+            #we need to preprocess the idea filee
+            idea_file_obj = Path(idea_dir + "\\" + file_name + '.idea')
+            gz_file_obj = Path(idea_dir + "\\" + file_name + '.gz')
+
+            df_prep = pd.DataFrame()
+
+            if idea_file_obj.is_file():
+                df_prep = preprocess(str(idea_file_obj))
+            elif gz_file_obj.is_file():
+                df_prep = preprocess(str(gz_file_obj))
+            else:
+                print(f"Can't process idea file {str(idea_file_obj).rsplit('.')[1]}.(pcl|gz)")
+
+            df_prep.to_pickle(file_obj)
+
+            df = pd.concat([df, df_prep], ignore_index=True)
+        else:
+            print(f"Can't process file {str(file_obj).rsplit('.')[0]}.(pcl|gz), it is not a file")
 
     tfrom = datetime.datetime.strptime('{} 00:00:00'.format(file_list[0]),timeFormat).timestamp()
     tto = datetime.datetime.strptime('{} 23:59:59'.format(file_list[-1]), timeFormat).timestamp()
 
-    return (df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list)
+    return df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list
 
 
+def filter_clusters(clusters):
+    #TODO vyber zaujimave klastre, automaticky
+    pass
+
+def collect_flows(clusters):
+    #TODO ziskaj flow vzorky pre kazdy vybrany cluster
+    pass

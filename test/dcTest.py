@@ -1,8 +1,6 @@
 import dCollector
 import pandas as pd
 
-
-
 def test_filterFlows():
 
     filter = """ip in ['107.155.36.2',

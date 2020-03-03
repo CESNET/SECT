@@ -2,8 +2,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 import pandas as pd
-#this module should solve visualizations
 
+#this module should solve visualizations
 
 
 def genSankey(df, cat_cols=[], value_cols='', title='Sankey Diagram'):
