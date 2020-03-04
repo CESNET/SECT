@@ -175,7 +175,15 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
     return df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list
 
 
-def filter_clusters(clusters):
+def filter_clusters(clust, ser, c_typ, c_org):
+    criterions = pd.DataFrame(index=clust.index)
+    criterions['size_quantile_95'] = (clust['size'] >= clust['size'].quantile(.95))
+    criterions['events_quantlie_95'] = (clust['events'] >= clust['events'].quantile(.95))
+    criterions['series_irregular'] = False #TODO
+    ctq = c_typ.quantile(.95)
+    criterions['count_of_type_gt_than_quantile_95'] = clust.apply(lambda x: np.sum(x > ctq), axis=1)
+
+
     #TODO vyber zaujimave klastre, automaticky
     pass
 

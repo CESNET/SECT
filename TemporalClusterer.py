@@ -119,17 +119,24 @@ class TemporalClusterer:
 
         df = df.loc[df['labels'] > -1, :]
 
-        df['type'].apply(lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(','))
+        df_type = pd.get_dummies(df['type'].apply(
+            lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '')
+                       .replace(', ', '-')))
+
+        df_origin = pd.get_dummies(df['origin'].apply(
+            lambda x: x.split(',')[-1].rstrip(']').rstrip('}').split(':')[-1].strip(' ').replace('\'', '')))
+
+        clusters_origin = df_origin.groupby(df['labels']).agg('sum')
+        clusters_type = df_type.groupby(df['labels']).agg('sum')
 
         clusters = (df.loc[df.labels > -1]
                     .groupby('labels')
                     .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
                          tfrom=('timestamp', min), tto=('timestamp', max),
                          origins=('origin', set),
-                         types=('type', lambda l: [item for sublist in l for item in sublist]),
+                         types=('type', set),
                          )
                     )
-        # .rename({'ip': ('ip', 'ip_count'), 'timestamp': ('min', 'max'), 'origin': 'sources', 'type': 'evt_types'}))
 
         # for filtering
         clusters[['min_blocks', 'min_activity']] = (self.features.groupby('labels').
