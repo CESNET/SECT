@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import datetime
 from pathlib import Path
-from preprocess import *
+
+import preprocess
+import dCollector
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -46,7 +48,7 @@ def filter_frame(df, tfrom, tto, agg_secs=900, min_count=5):
     evt_signal = A.groupby('timestamp')['ip'].agg('count')
     # sns.lineplot(data=evt_signal)
 
-    data['series'] = data['list'].apply(get_bin_series, args=[np.int((days_proc * 24 * 3600) / agg_secs)])
+    data['series'] = data['list'].apply(preprocess.get_bin_series, args=[np.int((days_proc * 24 * 3600) / agg_secs)])
     data.sort_values('count', inplace=True, ascending=True)
     vect = pd.concat([pd.DataFrame(index=data.index, data=np.stack(data.series)), data['count']], axis=1)
 
@@ -59,21 +61,25 @@ def inter_arrival(x, thr):
 
 
 def sample_first_last_mid(df):
-    if len(df) > 3:
-        return df.iloc[[0, int(len(df)/2), -1], :]
+    if len(df) > 2:
+        return df.iloc[[0, int(len(df)/2), len(df)-1], :]
     else:
         return df
 
 
-def sample_intervals(df, first, aggregation=900, pre_block_pad=1, sample_size=3):
+def sample_intervals(series, first, aggregation=900, pre_block_pad=1, sample_size=3):
     first_timestamp = datetime.datetime.strptime(first, dateFormat).timestamp()
     # intervals=df.apply(lambda x: get_beginning(x, first, aggregation, pre_block_pad).sample(3))
-    intervals = df.apply(
-        lambda x: (sample_first_last_mid(pd.DataFrame(get_intervals(x, first=first_timestamp, agg=aggregation, offset=pre_block_pad)))
-                   .applymap(lambda y: pd.Timestamp(y).timestamp()).astype(int)).values
-        , axis=1)
+    intervals = series.apply(
+        lambda x: sample_first_last_mid(
+            pd.DataFrame(
+                data=get_intervals(x, first=first_timestamp, agg=aggregation, offset=pre_block_pad),
+                columns=('from', 'to')
+            ).applymap(lambda y: pd.Timestamp(y).timestamp()).astype(int)
+        ),
+        axis=1)
 
-    return np.array(intervals)
+    return pd.Series(intervals, index=series.index)
 
 
 def get_intervals(x, first, agg, offset):
@@ -157,9 +163,9 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
             df_prep = pd.DataFrame()
 
             if idea_file_obj.is_file():
-                df_prep = preprocess(str(idea_file_obj))
+                df_prep = preprocess.preprocess(str(idea_file_obj))
             elif gz_file_obj.is_file():
-                df_prep = preprocess(str(gz_file_obj))
+                df_prep = preprocess.preprocess(str(gz_file_obj))
             else:
                 print(f"Can't process idea file {str(idea_file_obj).rsplit('.')[1]}.(pcl|gz)")
 
@@ -175,18 +181,50 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
     return df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list
 
 
-def filter_clusters(clust, ser, c_typ, c_org):
-    criterions = pd.DataFrame(index=clust.index)
-    criterions['size_quantile_95'] = (clust['size'] >= clust['size'].quantile(.95))
-    criterions['events_quantlie_95'] = (clust['events'] >= clust['events'].quantile(.95))
-    criterions['series_irregular'] = False #TODO
-    ctq = c_typ.quantile(.95)
-    criterions['count_of_type_gt_than_quantile_95'] = clust.apply(lambda x: np.sum(x > ctq), axis=1)
+def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
+
+    score = pd.DataFrame(index=cluster.index)
+    score['size_in_quantile_95'] = (cluster['size'] >= cluster['size'].quantile(.95))
+    score['events_in_quantlie_95'] = (cluster['events'] >= cluster['events'].quantile(.95))
+    inter_arrival_dev = series.apply(lambda x: inter_arrival(x, 0.1)[1])
+    iaq = inter_arrival_dev.quantile(.80)
+    score['series_is_irregular'] = (inter_arrival_dev > iaq)
+    ctq = cluster_type_count.quantile(.95)
+    score['type_count_in_quantile_95'] = cluster_type_count.apply(lambda x: np.sum(x > ctq), axis=1)
+    #score['type_tag'] = False
+
+    score_sum = score.apply(np.sum, axis=1)
+    score_sum.sort_values(inplace=True, ascending=False)
+
+    tags = pd.DataFrame(index=cluster.index)
+    for x in score.columns:
+        tags[x] = score[x].apply(lambda y: [x] if y > 0 else [])
+    for x in cluster_type_count.columns:
+        tags[x] = cluster_type_count[x].apply(lambda y: [x] if y > ctq[x] else [])
+
+    tag_list = tags.apply(lambda row: [item for sublist in row for item in sublist], axis=1)
+
+    return score_sum, score, tag_list
 
 
-    #TODO vyber zaujimave klastre, automaticky
-    pass
+def clusters_get_flows(cluster, interval, dc_conn=None):
 
-def collect_flows(clusters):
-    #TODO ziskaj flow vzorky pre kazdy vybrany cluster
-    pass
+    if dc_conn is None:
+        dc_conn = dCollector.dc()
+
+    flow_sample = pd.Series(index=interval.index, dtype=object)
+
+    #iterate not apply for better readability
+    for x in interval.index:
+        flow_sample[x] = pd.DataFrame()
+        for val in interval[x].index:
+            filter_str = dCollector.dc_liberouter_filter_string(cluster.loc[x, 'ips'])
+            df = dc_conn.filterFlows(filter_str,
+                                     interval[x].loc[val, 'from'],
+                                     interval[x].loc[val, 'to'])
+            flow_sample[x] = pd.concat([flow_sample[x], df])
+
+    return flow_sample
+
+#def get_aggregates():
+

@@ -31,7 +31,7 @@ class dc:
                     limit=10000,
                     fields=('first', 'packets', 'bytes', 'srcip', 'dstip', 'srcport', 'dstport', 'flags',
                             'proto', 'duration'),
-                    addr_conv='str', tcpflags_conv='none', proto_conv='none', duration_conv='none'):
+                    addr_conv='str', tcpflags_conv='none', proto_conv='str', duration_conv='none'): #see fdistdump on git hub for api details
 
         channels_s = ''
         for x in channels:

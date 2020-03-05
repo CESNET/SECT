@@ -158,7 +158,7 @@ class TemporalClusterer:
             data=np.stack(series),
             index=series.index,
             columns=pd.DatetimeIndex(
-                pd.date_range(start=file_list[0], periods=self.vect_len, freq='15T')).strftime('%m/%d-%H:%M')
+                pd.date_range(start=file_list[0], end=file_list[-1], periods=self.vect_len)).strftime('%m-%d %H:%M')
         )
 
         #a = clusters['types'].apply(
