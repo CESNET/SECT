@@ -250,7 +250,8 @@ def to_str_flags(x):
     return res
 
 
-def flows_aggregate(flows, by='srcip', target='dstport', head_n=5):
+def flows_aggregate(flows, by=('srcip'), target='dstport', head_n=5):
+
     #flows=('packets', 'count')
     #duration=('duration', 'sum')
     #packets=('packets', 'sum')
@@ -265,7 +266,7 @@ def flows_aggregate(flows, by='srcip', target='dstport', head_n=5):
     if list(by).__contains__('dstip'):
         other_side='srcip'
 
-    dfa = flows.groupby(list(by)).agg(
+    dfa = flows.groupby([by]).agg(
             flows=('packets', 'count'),
             ip_count=(other_side, lambda x:len(set(x))),
             ip_top=(other_side, lambda x: str(pd.value_counts(x).head(head_n))),
@@ -290,9 +291,8 @@ def flows_aggregate(flows, by='srcip', target='dstport', head_n=5):
 
 
 def flows_get_views(flows):
-    return flows_aggregate(flows), flows_aggregate(flows, by='srcport'), flows_aggregate(flows, by='proto', target='srcip')
-
-
-
+    return flows_aggregate(flows),\
+           flows_aggregate(flows, by=('srcport')),\
+           flows_aggregate(flows, by=('proto'), target='srcip')
 
 

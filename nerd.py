@@ -1,7 +1,9 @@
+import sys
 import requests
 import json
 import pandas as pd
 import numpy as np
+
 
 class NerdC:
     def __init__(self):
@@ -42,8 +44,15 @@ class NerdC:
 
         df = pd.DataFrame(data=ip_info).T.dropna(how='all')
 
-        df['geo'] = df['geo'].apply(lambda x: x['ctry'])
-        df['reputation'] = df.fmp.apply(lambda x: x['general'])
+        try:
+            df['geo'] = df['geo'].apply(lambda x: x['ctry'])
+        except KeyError:
+            print(f'{df.geo}\nIs missing "ctry" key', file=sys.stderr)
+
+        try:
+            df['reputation'] = df.fmp.apply(lambda x: x['general'])
+        except KeyError:
+            print(f'{df.reputation}\nIs missing "reputation" key', file=sys.stderr)
         #df.sort_values(inplace=True, by='reputation', ascending=False)
 
         return df
