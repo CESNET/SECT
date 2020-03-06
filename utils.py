@@ -156,7 +156,7 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
             df = pd.concat([df, pd.read_pickle(file_obj)], ignore_index=True)
 
         elif not file_obj.exists():
-            #we need to preprocess the idea filee
+            #we need to preprocess the idea file
             idea_file_obj = Path(idea_dir + "\\" + file_name + '.idea')
             gz_file_obj = Path(idea_dir + "\\" + file_name + '.gz')
 
@@ -186,7 +186,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     score = pd.DataFrame(index=cluster.index)
     score['size_in_quantile_95'] = (cluster['size'] >= cluster['size'].quantile(.95))
     score['events_in_quantlie_95'] = (cluster['events'] >= cluster['events'].quantile(.95))
-    inter_arrival_dev = series.apply(lambda x: inter_arrival(x, 0.1)[1])
+    inter_arrival_dev = series.apply(lambda x: inter_arrival(x, 0.3)[1])
     iaq = inter_arrival_dev.quantile(.80)
     score['series_is_irregular'] = (inter_arrival_dev > iaq)
     ctq = cluster_type_count.quantile(.95)
@@ -218,13 +218,81 @@ def clusters_get_flows(cluster, interval, dc_conn=None):
     for x in interval.index:
         flow_sample[x] = pd.DataFrame()
         for val in interval[x].index:
-            filter_str = dCollector.dc_liberouter_filter_string(cluster.loc[x, 'ips'])
-            df = dc_conn.filterFlows(filter_str,
+            filter_str = dCollector.dc_liberouter_filter_string(cluster.loc[x])
+            df = dc_conn.filterFlows('src ' + filter_str,
+                                     interval[x].loc[val, 'from'],
+                                     interval[x].loc[val, 'to'])
+            flow_sample[x] = pd.concat([flow_sample[x], df])
+            df = dc_conn.filterFlows('dst ' + filter_str,
                                      interval[x].loc[val, 'from'],
                                      interval[x].loc[val, 'to'])
             flow_sample[x] = pd.concat([flow_sample[x], df])
 
     return flow_sample
 
-#def get_aggregates():
+
+def bitwise_or_series(x):
+    res = 0
+    for val in x:
+        res = np.bitwise_or(res, val)
+    return res
+
+
+def to_str_flags(x):
+    res = ''
+    lst = 'CEUAPRSF'
+    val = np.binary_repr(x, width=8)
+    for x in range(0, 7):
+        if val[x] == '1':
+            res += lst[x]
+        else:
+            res += '.'
+    return res
+
+
+def flows_aggregate(flows, by='srcip', target='dstport', head_n=5):
+    #flows=('packets', 'count')
+    #duration=('duration', 'sum')
+    #packets=('packets', 'sum')
+    #bytes=('bytes', 'sum')
+    #flags=('flags', np.bitwise_or)
+    #dstip_count = ('dstip', lambda x: len(set(x))),
+    #dstip_top = ('dstip', lambda x: (pd.value_counts(x).head(5))),
+    #dstport_count = ('dstport', lambda x: len(set(x))),
+    #dstport_top = ('dstport', lambda x: (pd.value_counts(x).head(5))),
+
+    other_side='dstip'
+    if list(by).__contains__('dstip'):
+        other_side='srcip'
+
+    dfa = flows.groupby(list(by)).agg(
+            flows=('packets', 'count'),
+            ip_count=(other_side, lambda x:len(set(x))),
+            ip_top=(other_side, lambda x: str(pd.value_counts(x).head(head_n))),
+            target_count=(target, lambda x: len(set(x))),
+            target_top=(target, lambda x: str(pd.value_counts(x).head(head_n))),
+
+            duration=('duration', 'sum'),
+            packets=('packets', 'sum'),
+            bytes=('bytes', 'sum'),
+            flags=('flags', bitwise_or_series)
+        )
+
+    dfa['duration'] = dfa['duration'].apply(lambda x: datetime.timedelta(milliseconds=x))
+    dfa['flags'] = dfa['flags'].apply(to_str_flags)
+    dfa['bps'] = dfa.bytes/(dfa.duration.apply(datetime.timedelta.total_seconds))
+    dfa['pps'] = dfa.packets/(dfa.duration.apply(datetime.timedelta.total_seconds))
+    dfa['bpp'] = dfa.bytes/dfa.packets
+
+    dfa.sort_values(inplace=True, ascending=False, by='flows')
+
+    return dfa
+
+
+def flows_get_views(flows):
+    return flows_aggregate(flows), flows_aggregate(flows, by='srcport'), flows_aggregate(flows, by='proto', target='srcip')
+
+
+
+
 
