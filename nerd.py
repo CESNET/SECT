@@ -21,9 +21,9 @@ class NerdC:
         ips = [x.strip(' ') for x in ips]
 
 
-        coded=''
+        coded = ''
         for x in ips:
-            coded+=x+','
+            coded += x + ','
 
         response = requests.post(self.base+'/ip/bulk/', data=coded[:-1], headers=self.headers)
 
@@ -44,15 +44,13 @@ class NerdC:
 
         df = pd.DataFrame(data=ip_info).T.dropna(how='all')
 
-        try:
-            df['geo'] = df['geo'].apply(lambda x: x['ctry'])
-        except KeyError:
-            print(f'{df.geo}\nIs missing "ctry" key', file=sys.stderr)
+        #try:
+        df['geo'] = df['geo'].apply(lambda x: x.get('ctry', None))
+        #except KeyError:
+        ##    print(f'{df.geo}\nIs missing "ctry" key', file=sys.stderr)
 
-        try:
-            df['reputation'] = df.fmp.apply(lambda x: x['general'])
-        except KeyError:
-            print(f'{df.reputation}\nIs missing "reputation" key', file=sys.stderr)
+        df['reputation'] = df.fmp.apply(lambda x: x.get('general', None))
+
         #df.sort_values(inplace=True, by='reputation', ascending=False)
 
         return df

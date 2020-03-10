@@ -186,7 +186,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     score = pd.DataFrame(index=cluster.index)
     score['size_in_quantile_95'] = (cluster['size'] >= cluster['size'].quantile(.95))
     score['events_in_quantlie_95'] = (cluster['events'] >= cluster['events'].quantile(.95))
-    inter_arrival_dev = series.apply(lambda x: inter_arrival(x, 0.3)[1])
+    inter_arrival_dev = series.apply(lambda x: inter_arrival(x, 0.3)[1], axis=1)
     iaq = inter_arrival_dev.quantile(.80)
     score['series_is_irregular'] = (inter_arrival_dev > iaq)
     ctq = cluster_type_count.quantile(.95)
@@ -205,7 +205,6 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     tag_list = tags.apply(lambda row: [item for sublist in row for item in sublist], axis=1)
 
     return score_sum, score, tag_list
-
 
 def clusters_get_flows(cluster, interval, dc_conn=None):
 
@@ -250,7 +249,7 @@ def to_str_flags(x):
     return res
 
 
-def flows_aggregate(flows, by=('srcip'), target='dstport', head_n=5):
+def flows_aggregate(flows, by=['srcip'], target='dstport', head_n=5):
 
     #flows=('packets', 'count')
     #duration=('duration', 'sum')
@@ -262,11 +261,11 @@ def flows_aggregate(flows, by=('srcip'), target='dstport', head_n=5):
     #dstport_count = ('dstport', lambda x: len(set(x))),
     #dstport_top = ('dstport', lambda x: (pd.value_counts(x).head(5))),
 
-    other_side='dstip'
-    if list(by).__contains__('dstip'):
-        other_side='srcip'
+    other_side = 'dstip'
+    if by.__contains__('dstip'):
+        other_side = 'srcip'
 
-    dfa = flows.groupby([by]).agg(
+    dfa = flows.groupby(by).agg(
             flows=('packets', 'count'),
             ip_count=(other_side, lambda x:len(set(x))),
             ip_top=(other_side, lambda x: str(pd.value_counts(x).head(head_n))),
@@ -291,8 +290,42 @@ def flows_aggregate(flows, by=('srcip'), target='dstport', head_n=5):
 
 
 def flows_get_views(flows):
-    return flows_aggregate(flows),\
-           flows_aggregate(flows, by=('srcport')),\
-           flows_aggregate(flows, by=('proto'), target='srcip')
+    bysrcip = flows.apply(flows_aggregate)
+    bysrcport = flows.apply(flows_aggregate, by=['srcport'])
+    return bysrcip, bysrcport
+    #return [flows_aggregate(flows),\
+    #       flows_aggregate(flows, by=['srcport'])]
+    #       #flows_aggregate(flows, by=['src'], target='srcip')
 
 
+def store_analysis(path, df, clusters, series, dfnerd, dfflows, dfviewsrcip, dfviewsrcport):
+
+    where = Path(path)
+    where.mkdir(parents=True, exist_ok=True)
+
+    df.to_pickle(path+'/events.pcl')
+    clusters.to_pickle(path+'/clusters.pcl')
+    series.to_pickle(path+'/series.pcl')
+    dfnerd.to_pickle(path+'/nerd.pcl')
+    dfflows.to_pickle(path+'/flows.pcl')
+    dfviewsrcip.to_pickle(path+'/viewsrcip.pcl')
+    dfviewsrcport.to_pickle(path+'/viewsrcport.pcl')
+
+    return
+
+
+def load_analysis(path):
+    where = Path(path)
+    if where.is_dir():
+        df = pd.read_pickle(path+'/events.pcl')
+        clusters = pd.read_pickle(path+'/clusters.pcl')
+        series = pd.read_pickle(path+'/series.pcl')
+        dfnerd = pd.read_pickle(path+'/nerd.pcl')
+        flows = pd.read_pickle(path+'/flows.pcl')
+        dfviewsrcip= pd.read_pickle(path+'/viewsrcip.pcl')
+        dfviewsrcport= pd.read_pickle(path+'/viewsrcport.pcl')
+
+        return df, clusters, series, dfnerd, flows, dfviewsrcip, dfviewsrcport
+    else:
+        print('Analysis is not done at that time range')
+        return None

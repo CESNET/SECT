@@ -4,6 +4,7 @@ import datetime
 from utils import *
 
 from preprocess import *
+import nerd
 
 from scipy.spatial.distance import squareform, pdist
 
@@ -119,12 +120,16 @@ class TemporalClusterer:
 
         df = df.loc[df['labels'] > -1, :]
 
-        df_type = pd.get_dummies(df['type'].apply(
+        df['type_less'] = df['type'].apply(
             lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '')
-                       .replace(', ', '-')))
+                       .replace(', ', '-'))
 
-        df_origin = pd.get_dummies(df['origin'].apply(
-            lambda x: x.split(',')[-1].rstrip(']').rstrip('}').split(':')[-1].strip(' ').replace('\'', '')))
+        df_type = pd.get_dummies(df['type_less'])
+
+        df['origin_less'] = df['origin'].apply(
+            lambda x: x.split(',')[-1].rstrip(']').rstrip('}').split(':')[-1].strip(' ').replace('\'', ''))
+
+        df_origin = pd.get_dummies(df['origin_less'])
 
         clusters_origin = df_origin.groupby(df['labels']).agg('sum')
         clusters_type = df_type.groupby(df['labels']).agg('sum')
@@ -133,8 +138,8 @@ class TemporalClusterer:
                     .groupby('labels')
                     .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
                          tfrom=('timestamp', min), tto=('timestamp', max),
-                         origins=('origin', set),
-                         types=('type', set),
+                         types=('type_less', set),
+                         origins=('origin_less', set),
                          )
                     )
 
@@ -158,16 +163,14 @@ class TemporalClusterer:
             data=np.stack(series),
             index=series.index,
             columns=pd.DatetimeIndex(
-                pd.date_range(start=file_list[0], end=file_list[-1], periods=self.vect_len)).strftime('%m-%d %H:%M')
+                pd.date_range(start=file_list[0], end=file_list[-1]+' 23:59:59.99', periods=self.vect_len+1)[:-1])
+                .strftime('%m-%d %H:%M')
         )
 
-        #a = clusters['types'].apply(
-        #    lambda x: [y.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(',')
-        #               for y in x])  # .split(','))#a.value_counts()
-        #a = a.apply(lambda l: tuple(set([item for sublist in l for item in sublist])))
-        #a.apply(print)
+        score_sum, score, tags = rank_clusters(clusters, series, clusters_type, clusters_origin)
 
-
+        clusters['score'] = score_sum
+        clusters['tags'] = tags
 
         return clusters, series
 
@@ -180,72 +183,53 @@ if __name__ == '__main__':
     # Set notebook mode to work in offline
     # from scipy.cluster.hierarchy import dendrogram, linkage
     #Load preprocessed files
-    print("Processing files")
-    (df, file_list) = load_files(sys.argv[1], sys.argv[2], sys.argv[3])
+    for day in pd.date_range(sys.argv[2], sys.argv[3]):
+        print("Processing files")
+        (df, file_list) = load_files(sys.argv[1], day.date().isoformat(), day.date().isoformat())
 
-    print("Clustering")
-    tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
-    df['labels'] = tc.fit_transform(df, [])
-    print("Running post process")
-    (clusters, series) = tc.post_process(df, file_list)
+        print("Clustering")
+        tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
+        df['labels'] = tc.fit_transform(df, [])
+        print("Running post process")
+        (clusters, series) = tc.post_process(df, file_list)
+
+        #Ranking of clusters, to pick what to focus on
+        top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
+
+        intervals = sample_intervals(series, file_list[0], tc.aggregation) # tc.aggregations should be same as with series
+
+        # only if you want flows and more data
+        df_flows = pd.Series(dtype=object)
+        df_nerd = pd.DataFrame()
+
+        if sys.argv[7] == 'True':
+            df_flows = clusters_get_flows(top10['ips'], intervals.loc[top10.index])
+
+            df_ip = df.loc[df['labels'] > -1, ['ip', 'labels']].loc[df['labels'] > -1]
+            df_ip = df_ip.groupby('ip').agg(cluster=('labels', min))
+            nerdC = nerd.NerdC()
+            df_nerd = nerdC.ip_req(df_ip.index.values)
+
+            df_nerd['cluster'] = df_ip
+            del df_ip
+
+            df_flow_views = flows_get_views(df_flows)
+
+            store_analysis(f'./data/{file_list[0]}_{file_list[-1]}/', df.loc[df['labels']>-1, :], clusters, series,
+                       df_nerd, df_flows, df_flow_views[0], df_flow_views[1])
+
 
     #%%
-
     # print(clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']])
     # clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']].hist()
-    #
-    # #%%
-    #
-    # clusters[['ips', 'size']]
-    #
-    # #%%
-    #
-    # sns.heatmap(series.apply(lambda x: np.multiply(x, clusters['size']), axis=0))
-    #
-    # #%%
-    #
-    # sns.heatmap(series)
-    #
-    # #%%
-    #
-    # topx=clusters.sort_values(ascending=False, by='size').head(5)
-    # #max=clusters.loc[clusters['size']==clusters['size'].max(),:].head(5)
-    # intervals = sample_intervals(series.loc[topx.index,:],file_list[0],tc.aggregation)
-    #
-    # benefizio = dCollector.dc()
-    # filter = clusters.loc[topx.index,'ips'].apply(dCollector.dc_liberouter_filter_string).values[0]
-    # res=benefizio.filterFlows(filter, intervals[0][0][0], intervals[0][0][1])
-    # print(res.head())
-    #
-    # #%%
     #
     # fig = go.Figure(graphing.genSankey(res.sample(10),['srcip','dstip'],'packets','Sample of packet flows'))
     #
     # fig.show()
-    #
-    # #%%
     #
     # badIps = clusters.loc[topx.index, 'ips']
     # print(badIps)
     # fig = go.Figure(graphing.genSankey(res.loc[res['srcip'].isin(list(badIps.values[0])),:],['srcip','proto'],
     #                                    'packets', 'Communication by protocols'))
     # fig.show()
-    #
-    # clusters2.types.apply(lambda x: pd.Series(x)).apply(pd.value_counts).T
-    #
-    # df['type'] = df['type'].apply(
-    #     lambda x: x.replace('[', '').replace(']', '').replace(' ', '').replace("'", '').replace('"', '').split(',')
-    # )
-    #
-    # clusters2.types.apply(lambda x: pd.Series(x)).apply(pd.value_counts)
-    #
-    # df = df.loc[df['labels'] > -1, :]
-    #
-    # clusters2 = (df.loc[df.labels > -1]
-    #              .groupby('labels')
-    #              .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
-    #                   tfrom=('timestamp', min), tto=('timestamp', max),
-    #                   origins=('origin', set),
-    #                   types=('type', lambda l: [item for sublist in l for item in sublist]),
-    #                   )
-    #              )
+
