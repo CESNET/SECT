@@ -172,7 +172,7 @@ class TemporalClusterer:
         clusters['score'] = score_sum
         clusters['tags'] = tags
 
-        return clusters, series
+        return clusters, series, score
 
 
 if __name__ == '__main__':
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
         df['labels'] = tc.fit_transform(df, [])
         print("Running post process")
-        (clusters, series) = tc.post_process(df, file_list)
+        (clusters, series, score) = tc.post_process(df, file_list)
 
         #Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)

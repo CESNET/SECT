@@ -5,6 +5,7 @@ from pathlib import Path
 
 import preprocess
 import dCollector
+import nerd
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -192,6 +193,12 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     ctq = cluster_type_count.quantile(.95)
     score['type_count_in_quantile_95'] = cluster_type_count.apply(lambda x: np.sum(x > ctq), axis=1)
     #score['type_tag'] = False
+    score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -1
+
+    if True:
+        nerdC = nerd.NerdC()
+        df_nerd = cluster.ips.apply(nerdC.ip_req)
+        score['ipblocks_ip_count_ratio'] = cluster['size']/(cluster['size']*df_nerd.apply(lambda x: len(set(x['ipblock'])))) > 0.7
 
     score_sum = score.apply(np.sum, axis=1)
     score_sum.sort_values(inplace=True, ascending=False)
