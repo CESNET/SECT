@@ -192,6 +192,9 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     score['series_is_irregular'] = (inter_arrival_dev > iaq)
     ctq = cluster_type_count.quantile(.95)
     score['type_count_in_quantile_95'] = cluster_type_count.apply(lambda x: np.sum(x > ctq), axis=1)
+    otq = cluster_origin_count.quantile(.95)
+    score['detector_count_in_quantile_95'] = cluster_origin_count.apply(lambda x: np.sum(x > otq), axis=1)
+
     #score['type_tag'] = False
     score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -1
 
@@ -206,12 +209,17 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     tags = pd.DataFrame(index=cluster.index)
     for x in score.columns:
         tags[x] = score[x].apply(lambda y: [x] if y > 0 else [])
+
     for x in cluster_type_count.columns:
         tags[x] = cluster_type_count[x].apply(lambda y: [x] if y > ctq[x] else [])
+
+    for x in cluster_origin_count.columns:
+        tags[x] = cluster_origin_count[x].apply(lambda y: [x] if y > otq[x] else [])
 
     tag_list = tags.apply(lambda row: [item for sublist in row for item in sublist], axis=1)
 
     return score_sum, score, tag_list
+
 
 def clusters_get_flows(cluster, interval, dc_conn=None):
 
@@ -248,7 +256,7 @@ def to_str_flags(x):
     res = ''
     lst = 'CEUAPRSF'
     val = np.binary_repr(x, width=8)
-    for x in range(0, 7):
+    for x in range(0, 8):
         if val[x] == '1':
             res += lst[x]
         else:
@@ -297,9 +305,12 @@ def flows_aggregate(flows, by=['srcip'], target='dstport', head_n=5):
 
 
 def flows_get_views(flows):
+
     bysrcip = flows.apply(flows_aggregate)
     bysrcport = flows.apply(flows_aggregate, by=['srcport'])
-    return bysrcip, bysrcport
+    bydstport = flows.apply(flows_aggregate, by=['dstport'])
+
+    return bysrcip, bysrcport, bydstport
     #return [flows_aggregate(flows),\
     #       flows_aggregate(flows, by=['srcport'])]
     #       #flows_aggregate(flows, by=['src'], target='srcip')
