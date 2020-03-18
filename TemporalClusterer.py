@@ -40,6 +40,40 @@ class TemporalClusterer:
         self.pairwise = pd.DataFrame()
 
 
+    def series_divide(self, division, series, limit=10000):
+
+        division.loc[:] = 0
+
+        # Start dividing by pattern in activity.
+        for x in range(np.ceil(np.log2(len(series.columns))).astype(np.int), 2, -1):
+            # print('step is {}'.format(2**x))
+            # See if division needs to be done
+            z = division.value_counts()
+            stopper = True
+            for w in z.index:
+                # For every group index that has group size larger than limit, an only for those
+                if z[w] > limit:
+                    # Refine division
+                    work_set = series.loc[division == w]
+                    ws_div = division.loc[division == w]
+                    # Shift value indexes higher, not to overvrite higher previous division result
+                    ws_div *= 2 ** x
+
+                    idx = 0
+                    for y in range(0, len(series.columns) + 1, 2 ** x):
+                        ws_div += (work_set.iloc[:, y:y + 2 ** x].apply(max, axis=1) > 0) * (2 ** idx)
+                        idx += 1
+
+                    # Update new division
+                    division.loc[ws_div.index] = ws_div
+                    stopper = False
+
+            if stopper:
+                break
+
+        return division
+
+
     def transform(self, df, labels):
 
         df.timestamp = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
@@ -69,54 +103,74 @@ class TemporalClusterer:
 
     def fit_transform(self, x, y):
 
-        data = self.transform(x, y)
-        self.features = data
+        dataAll = self.transform(x, y)
+        self.features = dataAll
 
-        labels = pd.Series([])
 
-        limit = 50000
-        if len(data) > 0:
-            # stack of features with ip in time index
-            if len(data) <= limit:
-                vect = pd.DataFrame(index=data.index, data=np.stack(data.series))
-            else:
-                #verify this
-                data = data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
+        labelsAll = pd.Series(data=-1, index=dataAll.index)
 
-                vect = pd.DataFrame(index=data.head(limit).index, data=np.stack(data.head(limit).series))
-                print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
+        limit = 40000
 
-            pairwise = pd.DataFrame(squareform(pdist(vect, self.metric)), index=vect.index,
-                                    columns=vect.index,
-                                    dtype=np.float16)
+        if len(dataAll) > 0:
 
-            # prune features/distance matrix
-            if self.prune:
-                matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold))\
-                    .where(lambda x: x >= self.min_cluster_size)\
-                    .dropna()
+            division = pd.Series(data=0, index=dataAll.index)
+            seriesAll = pd.DataFrame(index=dataAll.index, data=np.stack(dataAll['series']))
 
-                self.pairwise = pairwise.loc[matches.index, matches.index]
-                # input empty array -1 not decided if so.
-            else:
-                self.pairwise = pairwise
+            if len(dataAll) > limit:
 
-            if len(self.pairwise) > 1:
-                labels = hdbscan.HDBSCAN(
-                    min_cluster_size=self.min_cluster_size,
-                    metric='precomputed',
-                    cluster_sellection_method='leaf'
-                ).fit_predict(self.pairwise.astype(np.float)) # why ?
+                division = self.series_divide(division, seriesAll, limit=limit/2)
 
-                labels = pd.Series(labels, index=self.pairwise.index)
+            z = division.value_counts()
 
-        self.features['labels'] = labels
+            labels_ofs = 0
 
-        clusters = x['ip'].apply(lambda c: labels[c] if c in labels.index else -1)
+            for group in z.index:
+                data=dataAll.loc[division==group]
+                vect=seriesAll.loc[division==group]
+                # stack of features with ip in time index
+
+                # if group is too big, take head, most active with most blocks or sample...
+                if len(data) > limit:
+                    data = data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
+
+                    vect = vect.loc[data.head(limit).index,:]
+                    print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
+
+                # calculate distance matrix and prepare fro clustering
+                pairwise = pd.DataFrame(squareform(pdist(vect, self.metric)), index=vect.index,
+                                        columns=vect.index,
+                                        dtype=np.float16)
+
+                # prune features/distance matrix
+                if self.prune:
+                    matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold))\
+                        .where(lambda x: x >= self.min_cluster_size)\
+                        .dropna()
+
+                    self.pairwise = pairwise.loc[matches.index, matches.index]
+                    # input empty array -1 not decided if so.
+                else:
+                    self.pairwise = pairwise
+
+                if len(self.pairwise) > 1:
+                    labels = hdbscan.HDBSCAN(
+                        min_cluster_size=self.min_cluster_size,
+                        metric='precomputed',
+                        cluster_sellection_method='leaf'
+                    ).fit_predict(self.pairwise.astype(np.float)) # why ?
+
+                    labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
+                    labels_ofs = labels.max() + 1
+                    labelsAll.loc[labels.index] = labels
+
+        self.features['labels'] = labelsAll
+
+        # takes too long on bigger data, and it is not really necessary
+        clusters = x['ip'].apply(lambda c: labelsAll[c] if c in labelsAll.index else -1)
 
         return clusters
 
-    def post_process(self, df, file_list):
+    def post_process(self, df, file_list, query_nerd=False):
 
         df = df.loc[df['labels'] > -1, :]
 
@@ -158,7 +212,6 @@ class TemporalClusterer:
                   .apply(lambda x: np.sum(x, axis=0) / len(x))
                   )
 
-        #TODO fix annotation to not use frequency
         series = pd.DataFrame(
             data=np.stack(series),
             index=series.index,
@@ -167,7 +220,7 @@ class TemporalClusterer:
                 .strftime('%m-%d %H:%M')
         )
 
-        score_sum, score, tags = rank_clusters(clusters, series, clusters_type, clusters_origin)
+        score_sum, score, tags = rank_clusters(clusters, series, clusters_type, clusters_origin, query_nerd=query_nerd)
 
         clusters['score'] = score_sum
         clusters['tags'] = tags
@@ -182,7 +235,7 @@ if __name__ == '__main__':
 
     # Set notebook mode to work in offline
     # from scipy.cluster.hierarchy import dendrogram, linkage
-    #Load preprocessed files
+    # Load preprocessed files
     for day in pd.date_range(sys.argv[2], sys.argv[3]):
         print("Processing files")
         (df, file_list) = load_files(sys.argv[1], day.date().isoformat(), day.date().isoformat())
@@ -193,7 +246,7 @@ if __name__ == '__main__':
         print("Running post process")
         (clusters, series, score) = tc.post_process(df, file_list)
 
-        #Ranking of clusters, to pick what to focus on
+        # Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
 
         intervals = sample_intervals(series, file_list[0], tc.aggregation) # tc.aggregations should be same as with series

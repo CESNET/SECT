@@ -31,9 +31,11 @@ class NerdC:
 
         return pd.Series(data=rep, index=ips)
 
+    #TODO fixme - what if there are no responses ?
     def ip_req(self, ips):
 
         ips = [x.strip(' ') for x in ips]
+
         ip_info = {}
         for ip in ips:
             resp = requests.get(self.base+'/ip/'+ip, headers=self.headers)
@@ -42,16 +44,23 @@ class NerdC:
             else:
                 ip_info[ip] = np.nan
 
-        df = pd.DataFrame(data=ip_info).T.dropna(how='all')
 
-        #try:
-        df['geo'] = df['geo'].apply(lambda x: x.get('ctry', None))
-        #except KeyError:
-        ##    print(f'{df.geo}\nIs missing "ctry" key', file=sys.stderr)
+        df = pd.DataFrame(columns=('geo', 'reputation', 'ipblock'))
 
-        df['reputation'] = df.fmp.apply(lambda x: x.get('general', None))
+        try:
+            df = pd.DataFrame(data=ip_info).T.dropna(how='all')
 
-        #df.sort_values(inplace=True, by='reputation', ascending=False)
+            if len(df) > 0:
+            #try:
+                df['geo'] = df['geo'].apply(lambda x: x.get('ctry', None))
+                #except KeyError:
+                ##    print(f'{df.geo}\nIs missing "ctry" key', file=sys.stderr)
+
+                df['reputation'] = df.fmp.apply(lambda x: x.get('general', None))
+
+            #df.sort_values(inplace=True, by='reputation', ascending=False)
+        except ValueError:
+            pass
 
         return df
 

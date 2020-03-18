@@ -54,10 +54,14 @@ def filter_frame(df, tfrom, tto, agg_secs=900, min_count=5):
     vect = pd.concat([pd.DataFrame(index=data.index, data=np.stack(data.series)), data['count']], axis=1)
 
 
-def inter_arrival(x, thr):
-    idxes = np.nonzero(np.diff(x) > thr)
-    idxes = np.subtract(idxes, idxes[0][0])  # start from fist event
-    inter = np.diff(idxes)
+def inter_arrival(series, thr=0.3):
+    x = pd.Series(series, index=range(0,len(series)))
+    quant = x.loc[x > 0].quantile(thr)
+    xdiff = x.diff()
+    idxes = pd.Series(data=xdiff.loc[xdiff >= quant].index.values)
+    inter = idxes.diff().dropna()
+    if len(inter) < 1:
+        return [0, 0]
     return [np.std(inter), np.mean(inter)]
 
 
@@ -82,7 +86,7 @@ def sample_intervals(series, first, aggregation=900, pre_block_pad=1, sample_siz
 
     return pd.Series(intervals, index=series.index)
 
-
+#TODO something is wrong here ? lst[save] save index out of bounds
 def get_intervals(x, first, agg, offset):
     x = pd.Series(data=np.concatenate(([0], x)), index=range(0 - agg, (len(x)) * agg, agg))
     thr = x[x > 0].median()
@@ -182,7 +186,7 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
     return df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list
 
 
-def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
+def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, query_nerd=False):
 
     score = pd.DataFrame(index=cluster.index)
     score['size_in_quantile_95'] = (cluster['size'] >= cluster['size'].quantile(.95))
@@ -198,7 +202,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count):
     #score['type_tag'] = False
     score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -1
 
-    if True:
+    if query_nerd:
         nerdC = nerd.NerdC()
         df_nerd = cluster.ips.apply(nerdC.ip_req)
         score['ipblocks_ip_count_ratio'] = cluster['size']/(cluster['size']*df_nerd.apply(lambda x: len(set(x['ipblock'])))) > 0.7

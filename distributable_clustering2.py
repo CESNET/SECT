@@ -46,6 +46,7 @@ IPdf = IPdf.loc[IPdf.apply(list.__len__) > 1]
 
 
 # %%
+
 df['day'] = (df.hour / (24*3)).astype(np.int)
 lst = df[['ip', 'day']].groupby('ip').agg(lambda x: (list(set(x))))
 
