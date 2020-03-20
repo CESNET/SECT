@@ -31,7 +31,6 @@ class NerdC:
 
         return pd.Series(data=rep, index=ips)
 
-    #TODO fixme - what if there are no responses ?
     def ip_req(self, ips):
 
         ips = [x.strip(' ') for x in ips]

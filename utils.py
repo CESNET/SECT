@@ -86,10 +86,9 @@ def sample_intervals(series, first, aggregation=900, pre_block_pad=1, sample_siz
 
     return pd.Series(intervals, index=series.index)
 
-#TODO something is wrong here ? lst[save] save index out of bounds
 def get_intervals(x, first, agg, offset):
     x = pd.Series(data=np.concatenate(([0], x)), index=range(0 - agg, (len(x)) * agg, agg))
-    thr = x[x > 0].median()
+    thr = x[x > 0].quantile(0.3)
 
     blocks = x[x > thr]
     if len(blocks) < 1:
@@ -107,6 +106,12 @@ def get_intervals(x, first, agg, offset):
 
     lst = np.array([block_s, block_e]).T
 
+    if len(lst) < 1:
+        lst = np.array([
+            [datetime.datetime.fromtimestamp(first + blocks.index[0] - offset * agg).isoformat()],
+            [datetime.datetime.fromtimestamp(first + blocks.index[0] + agg).isoformat()]
+               ]).T
+
     save = [0]
     edit = 0
     if len(lst) > 0:
@@ -117,8 +122,8 @@ def get_intervals(x, first, agg, offset):
                 edit = t
                 save.append(edit)
 
-    return lst[save]
-
+        return lst[save]
+    return lst
 
 def plot_clusters(clusters, fingerprint, aggr, file_list, clust_list):
     plt.figure()
@@ -212,7 +217,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, que
 
     tags = pd.DataFrame(index=cluster.index)
     for x in score.columns:
-        tags[x] = score[x].apply(lambda y: [x] if y > 0 else [])
+        tags[x] = score[x].apply(lambda y: [x] if y else [])
 
     for x in cluster_type_count.columns:
         tags[x] = cluster_type_count[x].apply(lambda y: [x] if y > ctq[x] else [])
