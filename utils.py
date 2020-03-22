@@ -193,6 +193,7 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
 
 def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, query_nerd=False):
 
+    #TODO convert to topN indstead of quantiles
     score = pd.DataFrame(index=cluster.index)
     score['size_in_quantile_95'] = (cluster['size'] >= cluster['size'].quantile(.95))
     score['events_in_quantlie_95'] = (cluster['events'] >= cluster['events'].quantile(.95))
@@ -202,10 +203,12 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, que
     ctq = cluster_type_count.quantile(.95)
     score['type_count_in_quantile_95'] = cluster_type_count.apply(lambda x: np.sum(x > ctq), axis=1)
     otq = cluster_origin_count.quantile(.95)
-    score['detector_count_in_quantile_95'] = cluster_origin_count.apply(lambda x: np.sum(x > otq), axis=1)
+
+    # Do not include origin quantile counts
+    #score['detector_count_in_quantile_95'] = cluster_origin_count.apply(lambda x: np.sum(x > otq), axis=1)
 
     #score['type_tag'] = False
-    score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -1
+    score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -5
 
     if query_nerd:
         nerdC = nerd.NerdC()

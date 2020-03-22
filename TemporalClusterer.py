@@ -20,7 +20,7 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 class TemporalClusterer:
     def __init__(self, min_events=2, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
-                 metric='jaccard', prune=True, sample=-1):
+                 metric='jaccard', prune=False, sample=-1):
 
         # filtering params
         self.min_events = np.int(min_events)
@@ -60,8 +60,10 @@ class TemporalClusterer:
                     ws_div *= 2 ** x
 
                     idx = 0
-                    for y in range(0, len(series.columns) + 1, 2 ** x):
-                        ws_div += (work_set.iloc[:, y:y + 2 ** x].apply(max, axis=1) > 0) * (2 ** idx)
+
+                    for y in range(0, len(series.columns), 2 ** x):
+                        ws_div.loc[:] = ((work_set.iloc[:, y:y + 2 ** x].apply(max, axis=1) > 0).astype(np.int) *
+                                         (2 ** idx))
                         idx += 1
 
                     # Update new division
@@ -109,7 +111,7 @@ class TemporalClusterer:
 
         labelsAll = pd.Series(data=-1, index=dataAll.index)
 
-        limit = 40000
+        limit = 20000
 
         if len(dataAll) > 0:
 
@@ -118,7 +120,7 @@ class TemporalClusterer:
 
             if len(dataAll) > limit:
 
-                division = self.series_divide(division, seriesAll, limit=limit/2)
+                division = self.series_divide(division, seriesAll, limit=limit*0.7)
 
             z = division.value_counts()
 
@@ -128,10 +130,11 @@ class TemporalClusterer:
                 data=dataAll.loc[division==group]
                 vect=seriesAll.loc[division==group]
                 # stack of features with ip in time index
-
+                if len(data) == 0:
+                    continue
                 # if group is too big, take head, most active with most blocks or sample...
                 if len(data) > limit:
-                    data = data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
+                    data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
 
                     vect = vect.loc[data.head(limit).index,:]
                     print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
@@ -153,10 +156,11 @@ class TemporalClusterer:
                     self.pairwise = pairwise
 
                 if len(self.pairwise) > 1:
+                    #try agglomerative
                     labels = hdbscan.HDBSCAN(
                         min_cluster_size=self.min_cluster_size,
                         metric='precomputed',
-                        cluster_sellection_method='leaf'
+                        #cluster_sellection_method='leaf'
                     ).fit_predict(self.pairwise.astype(np.float)) # why ?
 
                     labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
@@ -188,7 +192,7 @@ class TemporalClusterer:
         clusters_origin = df_origin.groupby(df['labels']).agg('sum')
         clusters_type = df_type.groupby(df['labels']).agg('sum')
 
-        clusters = (df.loc[df.labels > -1]
+        clusters = (df
                     .groupby('labels')
                     .agg(ips=('ip', lambda x: list(set(x))), size=('ip', lambda x: len(set(x))), events=('ip', 'count'),
                          tfrom=('timestamp', min), tto=('timestamp', max),
@@ -197,13 +201,19 @@ class TemporalClusterer:
                          )
                     )
 
+        ipseries = (df
+                    .groupby(['ip'])['timestamp']
+                    .agg(list)
+                    .apply(lambda x: np.array(get_bin_series(x, self.vect_len), dtype=np.bool))
+                   )
+
         # for filtering
         clusters[['min_blocks', 'min_activity']] = (self.features.groupby('labels').
                                                     agg(min_blocks=('blocks', min), min_activity=('activity', min)))
 
         #clusters.sort_values(('size'), ascending=False, inplace=True)
 
-        series = (df.loc[df.labels > -1]
+        series = (df
                   .groupby(['labels', 'ip'])['timestamp']
                   .agg(list)
                   .apply(lambda x: np.array(get_bin_series(x, self.vect_len), dtype=np.float))
@@ -216,16 +226,30 @@ class TemporalClusterer:
             data=np.stack(series),
             index=series.index,
             columns=pd.DatetimeIndex(
-                pd.date_range(start=file_list[0], end=file_list[-1]+' 23:59:59.99', periods=self.vect_len+1)[:-1])
+                pd.date_range(start=file_list[0], end=datetime.datetime.strptime(file_list[-1],'%Y-%m-%d')+datetime.timedelta(days=1),
+                              periods=self.vect_len+1)[:-1])
                 .strftime('%m-%d %H:%M')
         )
 
-        score_sum, score, tags = rank_clusters(clusters, series, clusters_type, clusters_origin, query_nerd=query_nerd)
+        (elen, edescr) = self.eval(series)
 
-        clusters['score'] = score_sum
-        clusters['tags'] = tags
+        #drop bad clusters
+        valid = series.loc[series.apply(lambda x: x[x > 0].mean(), axis=1) > 0.85, :]
+        clusters_v = clusters.loc[valid.index, :]
 
-        return clusters, series, score
+        score_sum, score, tags = rank_clusters(clusters_v, valid, clusters_type.loc[valid.index,:],
+                                               clusters_origin.loc[valid.index,:], query_nerd=query_nerd)
+
+        clusters_v['score'] = score_sum
+        clusters_v['tags'] = tags
+
+
+        return clusters_v, valid, score, ipseries
+
+    def eval(self, series):
+        x = series.apply(lambda x: x[x > 0].mean(), axis=1)
+        return (len(series), x.describe())
+
 
 
 if __name__ == '__main__':
@@ -242,9 +266,10 @@ if __name__ == '__main__':
 
         print("Clustering")
         tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
+                               #prune=sys.argv[8]=='True')
         df['labels'] = tc.fit_transform(df, [])
         print("Running post process")
-        (clusters, series, score) = tc.post_process(df, file_list)
+        (clusters, series, score, ipseries) = tc.post_process(df, file_list)
 
         # Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
@@ -272,6 +297,14 @@ if __name__ == '__main__':
                        df_nerd, df_flows, df_flow_views[0], df_flow_views[1])
 
 
+        from IPython import get_ipython
+
+        ipy = get_ipython()
+        if ipy is not None:
+            ipy.run_line_magic('matplotlib', 'qt')
+
+        sns.heatmap(series)
+        print(clusters.loc[top10.index,['size','events','ips','score','tags']])
     #%%
     # print(clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']])
     # clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']].hist()

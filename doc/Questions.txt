@@ -22,3 +22,5 @@ Co znamenaju klastre?
 
         Pomohli by anotovane data ?
         Ako mi pomoze analyza tokov ?
+
+        Na teraz sa používajú vzorky flow dát a infor z nerdu a dalších zdrojov

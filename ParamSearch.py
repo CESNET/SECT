@@ -26,11 +26,11 @@ if __name__ == '__main__':
 
         print("Clustering")
         tc = TemporalClusterer.TemporalClusterer(min_events=sys.argv[5], max_activity=sys.argv[6],
-                                                 dist_threshold=sys.argv[7], min_cluster_size=5)
+                                                 dist_threshold=sys.argv[7])
         df['labels'] = tc.fit_transform(df, [])
 
         print("Running post process")
-        (clusters, series, score) = tc.post_process(df, file_list, query_nerd=False)
+        (clusters, series, score) = tc.post_process(df, file_list, query_nerd=True)
 
         # Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
