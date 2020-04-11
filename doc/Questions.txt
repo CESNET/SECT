@@ -24,3 +24,8 @@ Co znamenaju klastre?
         Ako mi pomoze analyza tokov ?
 
         Na teraz sa používajú vzorky flow dát a infor z nerdu a dalších zdrojov
+
+
+#dtaidistance instalacia
+(mlEnv) C:\Users\Imrich\Repos\dtaidistance-master>python setup.py --noopenmp build_ext --inplace
+(mlEnv) C:\Users\Imrich\Repos\dtaidistance-master>python setup.py install

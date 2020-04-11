@@ -359,3 +359,37 @@ def load_analysis(path):
     else:
         print('Analysis is not done at that time range')
         return None
+
+def load_analysis(path):
+    where = Path(path)
+    if where.is_dir():
+        df = pd.read_pickle(path+'/events.pcl')
+        clusters = pd.read_pickle(path+'/clusters.pcl')
+        series = pd.read_pickle(path+'/series.pcl')
+        dfnerd = pd.read_pickle(path+'/nerd.pcl')
+        flows = pd.read_pickle(path+'/flows.pcl')
+        dfviewsrcip= pd.read_pickle(path+'/viewsrcip.pcl')
+        dfviewsrcport= pd.read_pickle(path+'/viewsrcport.pcl')
+
+        return df, clusters, series, dfnerd, flows, dfviewsrcip, dfviewsrcport
+    else:
+        print('Analysis is not done at that time range')
+        return None
+
+def load_results(path):
+    where = Path(path)
+    if where.is_dir():
+        #df = pd.read_pickle(path+'/events.pcl')
+        clusters = pd.read_pickle(path+'/clusters.pcl')
+        #series = pd.read_pickle(path+'/series.pcl')
+        #dfnerd = pd.read_pickle(path+'/nerd.pcl')
+        #flows = pd.read_pickle(path+'/flows.pcl')
+        #dfviewsrcip= pd.read_pickle(path+'/viewsrcip.pcl')
+        #dfviewsrcport= pd.read_pickle(path+'/viewsrcport.pcl')
+
+        X = pd.get_dummies(clusters.ips.apply(pd.Series))
+        X.columns = pd.Series(X.columns).apply(lambda x: x.split('_')[1])
+        return X #df, clusters, series, dfnerd, flows, dfviewsrcip, dfviewsrcport
+    else:
+        #print('Analysis is not done at that time range')
+        return pd.DataFrame()

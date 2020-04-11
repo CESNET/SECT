@@ -3,7 +3,7 @@ import numpy as np
 
 #tmp = np.sum(np.bitwise_and(data.iloc[x, 2], data.iloc[y, 2])) / max(np.sum(data.iloc[x, 2]), np.sum(data.iloc[y, 2]))
 #%% md
-Small performance survey
+#Small performance survey
 #%%
 %timeit tmp = np.sum(np.bitwise_and(data.iloc[x,2], data.iloc[y,2]))/max(np.sum(data.iloc[x,2]),np.sum(data.iloc[y,2]))
 #%%

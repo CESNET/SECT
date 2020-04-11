@@ -19,20 +19,24 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 
 class TemporalClusterer:
-    def __init__(self, min_events=2, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
-                 metric='jaccard', prune=False, sample=-1):
+    def __init__(self, min_events=2, min_activity=0.05, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
+                 metric='jaccard', sample=-1):
 
         # filtering params
         self.min_events = np.int(min_events)
         self.max_activity = np.float(max_activity)
+        self.min_activity = np.float(min_activity)
 
         # clustering params
         self.aggregation = np.int(aggregation)
         self.min_cluster_size = np.int(min_cluster_size)
-        self.dist_threshold = np.float(dist_threshold)
+
+        self.dist_threshold = np.inf
+        if dist_threshold is not None:
+            self.dist_threshold = np.float(dist_threshold)
 
         self.metric = metric
-        self.prune = prune
+        self.prune =  dist_threshold is not None
         self.sample = sample
 
         self.vect_len = 0
@@ -94,9 +98,9 @@ class TemporalClusterer:
         data['activity'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-        data = data.loc[((data['activity'] > self.min_events) &  # minimal activity
-                  (data['activity'] <= np.ceil(self.max_activity * self.vect_len)) &  # maximal activity
-                  (data['blocks'] >= self.min_events))  # pattern requirements
+        data = data.loc[((data['activity'] > self.min_activity * self.vect_len) &  # minimal activity
+                  (data['activity'] <= np.ceil(self.max_activity * self.vect_len))) #&  # maximal activity
+                #  (data['blocks'] >= self.min_events))  # pattern requirements
                 # (data['count'] >= self.min_events)
                   , :]
 
@@ -147,7 +151,7 @@ class TemporalClusterer:
                 # prune features/distance matrix
                 if self.prune:
                     matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold))\
-                        .where(lambda x: x >= self.min_cluster_size)\
+                        .where(lambda x: x > self.min_cluster_size)\
                         .dropna()
 
                     self.pairwise = pairwise.loc[matches.index, matches.index]
@@ -160,7 +164,7 @@ class TemporalClusterer:
                     labels = hdbscan.HDBSCAN(
                         min_cluster_size=self.min_cluster_size,
                         metric='precomputed',
-                        #cluster_sellection_method='leaf'
+                        #cluster_selection_method='leaf'
                     ).fit_predict(self.pairwise.astype(np.float)) # why ?
 
                     labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
@@ -204,8 +208,13 @@ class TemporalClusterer:
         ipseries = (df
                     .groupby(['ip'])['timestamp']
                     .agg(list)
-                    .apply(lambda x: np.array(get_bin_series(x, self.vect_len), dtype=np.bool))
+                    .apply(lambda x: np.array(get_bin_series(x, self.vect_len)).astype(np.float))
                    )
+
+        ipseries = pd.DataFrame(data=np.stack(ipseries), index=ipseries.index, columns=pd.DatetimeIndex(
+                    pd.date_range(start=file_list[0], end=datetime.datetime.strptime(file_list[-1],'%Y-%m-%d')+datetime.timedelta(days=1),
+                                  periods=self.vect_len+1)[:-1])
+                    .strftime('%Y-%m-%d %H:%M'))
 
         # for filtering
         clusters[['min_blocks', 'min_activity']] = (self.features.groupby('labels').
@@ -225,17 +234,17 @@ class TemporalClusterer:
         series = pd.DataFrame(
             data=np.stack(series),
             index=series.index,
-            columns=pd.DatetimeIndex(
-                pd.date_range(start=file_list[0], end=datetime.datetime.strptime(file_list[-1],'%Y-%m-%d')+datetime.timedelta(days=1),
-                              periods=self.vect_len+1)[:-1])
-                .strftime('%m-%d %H:%M')
+                columns=pd.DatetimeIndex(
+                    pd.date_range(start=file_list[0], end=datetime.datetime.strptime(file_list[-1],'%Y-%m-%d')+datetime.timedelta(days=1),
+                                  periods=self.vect_len+1)[:-1])
+                    .strftime('%Y-%m-%d %H:%M')
         )
 
-        (elen, edescr) = self.eval(series)
+        #(self.elen, self.edescr) = self.eval(series)
 
         #drop bad clusters
-        valid = series.loc[series.apply(lambda x: x[x > 0].mean(), axis=1) > 0.85, :]
-        clusters_v = clusters.loc[valid.index, :]
+        valid = series#.loc[series.apply(lambda x: x[x > 0].mean(), axis=1) > 0.85, :]
+        clusters_v = clusters#.loc[valid.index, :]
 
         score_sum, score, tags = rank_clusters(clusters_v, valid, clusters_type.loc[valid.index,:],
                                                clusters_origin.loc[valid.index,:], query_nerd=query_nerd)
@@ -246,10 +255,10 @@ class TemporalClusterer:
 
         return clusters_v, valid, score, ipseries
 
+
     def eval(self, series):
         x = series.apply(lambda x: x[x > 0].mean(), axis=1)
         return (len(series), x.describe())
-
 
 
 if __name__ == '__main__':
@@ -265,7 +274,7 @@ if __name__ == '__main__':
         (df, file_list) = load_files(sys.argv[1], day.date().isoformat(), day.date().isoformat())
 
         print("Clustering")
-        tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6])
+        tc = TemporalClusterer(min_events=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6], min_cluster_size=5)
                                #prune=sys.argv[8]=='True')
         df['labels'] = tc.fit_transform(df, [])
         print("Running post process")
