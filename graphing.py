@@ -6,6 +6,11 @@ import pandas as pd
 #this module should solve visualizations
 
 
+def decomp_hist(data, by, method, colors):
+
+    return plt.figure()
+
+
 def genSankey(df, cat_cols=[], value_cols='', title='Sankey Diagram'):
 
     # maximum of 6 value cols -> 6 colors
@@ -69,3 +74,4 @@ def genSankey(df, cat_cols=[], value_cols='', title='Sankey Diagram'):
 
     fig = dict(data=[data], layout=layout)
     return fig
+

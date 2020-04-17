@@ -48,59 +48,63 @@ if __name__ == '__main__':
     if ipy is not None:
         ipy.run_line_magic('matplotlib', 'qt')
 
-    dfrom = sys.argv[1]#'2020-03-12'
-    dto = sys.argv[2]#'2020-03-18'
+    dfrom = sys.argv[2]#'2020-03-12'
+    dto = sys.argv[3]#'2020-03-18'
+    freq = sys.argv[4]
 
-    results = pd.date_range(dfrom, dto, freq='1D').to_series()\
-        .apply(datetime.datetime.strftime, format='./data/%Y-%m-%d_%Y-%m-%d').apply(utils.load_results)
+    print(f"Loading data from {sys.argv[1]}")
+    ips = utils.load_clusters_ips(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
+    clusters, dfnerd = utils.load_results(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
 
-    for index, value in results.iteritems():
-        results[index]=results[index].assign(day=index)
+    intervals = len(ips.groupby('interval').agg('count'))
 
-    days=len(results)
+    clustCols = list(ips.columns)
+    clustCols.remove('interval')
 
-    X = pd.concat(results.values).fillna(0)
-    clustCols = list(X.columns)
-    clustCols.remove('day')
-    X = X.reset_index()
+    # following two are alligned now
+    X = ips.reset_index()
+    clusters.reset_index(inplace=True)
 
-    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete', distance_threshold=np.float(sys.argv[3]),
+    # group clusters across time with each other, clusters are disjunct in one day, but might not be across days
+    print(f"Finding groups with {sys.argv[5]} tolerance")
+    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete', distance_threshold=np.float(sys.argv[5]),
                                             n_clusters=None).fit(X.loc[:, clustCols])
 
     X['group'] = clustering.labels_
 
     # print member ips of surviving groups
-    X[clustCols + ['group']].groupby('group')\
-        .agg(sum)\
+    ipsSuper = X[clustCols + ['group']].groupby('group') \
+        .agg(sum) \
         .apply(lambda x: (X.columns.to_series().loc[clustCols].loc[x > 0]).to_list(), axis=1)
 
-    # print composition of clusters by days
-    evolution=X[clustCols+['group','day']].groupby(['group', 'day'])\
-        .agg(sum).apply(lambda x: (X.columns.to_series().loc[clustCols].loc[x > 0]).to_list(), axis=1).unstack('day')
+    # composition of clusters by days
+    series = X[clustCols + ['group', 'interval']].groupby(['group', 'interval']) \
+        .agg(sum).apply(lambda x: (X.columns.to_series().loc[clustCols].loc[x > 0]).to_list(), axis=1).unstack('interval')
+    series = series.applymap(lambda x: x if x is not np.nan else [])
 
     # print histogram of surviving days for clusters
-    survival = X[['day', 'group', 'labels']].groupby('group')\
-        .agg(survival=('group', 'count'), days=('day', list), labels=('labels', list))\
-        .sort_values(by='survival', ascending=False)
-
-    ax = survival.loc[survival['survival'] > 1, 'survival'].hist(bins=list(range(1, days+2)), align='left')
-    ax.set_title('Group reoccurrence at time range {} - {}'.format(dfrom, dto))
-    ax.set_xlabel('times reoccurence')
-    ax.set_ylabel('count')
+    groups = X[['interval', 'group', 'labels']].groupby('group') \
+        .agg(occurence=('group', 'count'), intervals=('interval', list), labels=('labels', list)) \
+        .sort_values(by='occurence', ascending=False)
 
 
-    twoMore=len(survival.loc[survival['survival'] > 2, :])
-    oneMore=len(survival.loc[survival['survival'] > 1, :])
+    twoMore=len(groups.loc[groups['occurence'] > 2, :])
+    oneMore=len(groups.loc[groups['occurence'] > 1, :])
 
     print(('From {} groups, there is {} that did reoccurre and {} that reocurred more than twice.\n' +
-          'Ratio for more than two reoccurrences is {}.')
-          .format(len(survival), oneMore, twoMore, twoMore/oneMore))
+           'Ratio for more than two reoccurrences is {}.')
+          .format(len(groups), oneMore, twoMore, twoMore / oneMore))
 
-    evolution = evolution.loc[survival.index, :]
-    #special func needed to avoid proplem with replacing nans
-    counts = evolution.applymap(lambda x: len(x) if x is not np.nan else 0)
 
-    plt.figure()
-    counts_norm = (counts.T / counts.T.max()).T
-    ax = sns.heatmap(data=counts_norm.loc[survival['survival'] > 1, :])
-    ax.set_xticklabels(counts.columns.to_series().apply(datetime.date.isoformat))
+    # with pd.option_context('display.max_colwidth', None, 'display.max_rows', None):
+
+    groups = groups.join(clusters[['types', 'origins', 'tags']].groupby(X['group'])\
+        .agg(lambda x: list(set([item for sublist in list(x) for item in sublist]))))
+    groups['ips'] = ipsSuper
+
+    print('Groups that occured more than once:')
+    print(groups.loc[groups['occurence'] > 1, :])
+
+    folder = f"{sys.argv[1]}/groups/{dfrom}_{dto}_{freq}"
+    utils.store_named_df(folder, dict(zip(['groups', 'series'], [groups, series])))
+    print(f'Results stored in: {folder}')

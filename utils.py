@@ -344,6 +344,21 @@ def store_analysis(path, df, clusters, series, dfnerd, dfflows, dfviewsrcip, dfv
     return
 
 
+def store_analysis2(path, df, clusters, series):
+
+    where = Path(path)
+    where.mkdir(parents=True, exist_ok=True)
+
+    df.to_pickle(path+'/events.pcl')
+    clusters.to_pickle(path+'/clusters.pcl')
+    series.to_pickle(path+'/series.pcl')
+
+    return
+
+
+
+
+
 def load_analysis(path):
     where = Path(path)
     if where.is_dir():
@@ -360,36 +375,81 @@ def load_analysis(path):
         print('Analysis is not done at that time range')
         return None
 
-def load_analysis(path):
+
+def load_results(rng, root, load_nerd=False):
+
+    clusters = pd.DataFrame()
+    nerd = pd.DataFrame()
+
+    for interval, interval_e in rng:
+
+        where = Path(f"{root}/{datetime.datetime.strftime(interval, '%Y-%m-%d')}_{datetime.datetime.strftime(interval_e, '%Y-%m-%d')}")
+
+        if where.is_dir():
+            clusters_part = pd.read_pickle(str(where)+'/clusters.pcl')
+
+            clusters = pd.concat([clusters, clusters_part.assign(day=interval)])
+            if load_nerd:
+                nerd_part = pd.read_pickle(str(where)+'/nerd.pcl')
+                nerd = pd.concat([nerd, nerd_part.assign(interval=interval)])
+
+    return clusters, nerd
+
+
+def load_clusters_ips(rng, root):
+
+    res = pd.DataFrame()
+    for interval, interval_e in rng:
+
+        where = Path(f"{root}/{datetime.datetime.strftime(interval, '%Y-%m-%d')}_{datetime.datetime.strftime(interval_e, '%Y-%m-%d')}")
+
+        if where.is_dir():
+            clusters = pd.read_pickle(str(where)+'/clusters.pcl')
+
+            X = pd.get_dummies(clusters.ips.apply(pd.Series))
+            X.columns = pd.Series(X.columns).apply(lambda x: x.split('_')[1])
+            res = pd.concat([res, X.assign(interval=interval)])
+
+    return res.fillna(0)
+
+# Purpose of this is to expand daterange to respect left and right intervals, because
+# this is how analysis is stored.
+def expand_range(dfrom, dto, freq):
+    r1 = pd.date_range(dfrom, datetime.datetime.strptime(dto, '%Y-%m-%d')+datetime.timedelta(days=1), freq=freq)
+    return zip(r1[:-1], r1[1:]-datetime.timedelta(seconds=1))
+
+
+def list_list_tolist(x):
+    return [item for sublist in x for item in sublist]
+
+def parse_analysis_date(analysis_date):
+    lst=analysis_date.split("_")
+
+    dt_from = (datetime.datetime.strptime(lst[0],'%Y-%m-%d')-datetime.timedelta(days=1)).isoformat(sep=' ')
+    #if len(lst) == 2:
+    dt_to = (datetime.datetime.strptime(lst[-1], '%Y-%m-%d')+
+             datetime.timedelta(days=1, hours=23, minutes=59, seconds=59)).isoformat(sep=' ')
+    #else:
+    #    dt_to = (datetime.datetime(lst[0]+' 23:59:59')+datetime.timedelta(days=1)).toisoformat(sep=' ')
+
+    dirname=lst[0]+'_'+lst[-1]
+
+    return dt_from, dt_to, dirname
+
+
+# Utillity functions for storing experiment results
+def store_named_df(path, df_dict):
+    where = Path(path)
+    where.mkdir(parents=True, exist_ok=True)
+    for fname, df in df_dict.items():
+        df.to_pickle(f"{str(where)}/{fname}.pcl")
+    return
+
+# Utillity functions for loading experiment results
+def load_named_df(path, fname_list):
+    results = dict()
     where = Path(path)
     if where.is_dir():
-        df = pd.read_pickle(path+'/events.pcl')
-        clusters = pd.read_pickle(path+'/clusters.pcl')
-        series = pd.read_pickle(path+'/series.pcl')
-        dfnerd = pd.read_pickle(path+'/nerd.pcl')
-        flows = pd.read_pickle(path+'/flows.pcl')
-        dfviewsrcip= pd.read_pickle(path+'/viewsrcip.pcl')
-        dfviewsrcport= pd.read_pickle(path+'/viewsrcport.pcl')
-
-        return df, clusters, series, dfnerd, flows, dfviewsrcip, dfviewsrcport
-    else:
-        print('Analysis is not done at that time range')
-        return None
-
-def load_results(path):
-    where = Path(path)
-    if where.is_dir():
-        #df = pd.read_pickle(path+'/events.pcl')
-        clusters = pd.read_pickle(path+'/clusters.pcl')
-        #series = pd.read_pickle(path+'/series.pcl')
-        #dfnerd = pd.read_pickle(path+'/nerd.pcl')
-        #flows = pd.read_pickle(path+'/flows.pcl')
-        #dfviewsrcip= pd.read_pickle(path+'/viewsrcip.pcl')
-        #dfviewsrcport= pd.read_pickle(path+'/viewsrcport.pcl')
-
-        X = pd.get_dummies(clusters.ips.apply(pd.Series))
-        X.columns = pd.Series(X.columns).apply(lambda x: x.split('_')[1])
-        return X #df, clusters, series, dfnerd, flows, dfviewsrcip, dfviewsrcport
-    else:
-        #print('Analysis is not done at that time range')
-        return pd.DataFrame()
+        for fname in fname_list:
+            results[fname] = pd.read_pickle(f"{str(where)}/{fname}.pcl")
+    return results
