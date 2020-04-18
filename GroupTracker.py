@@ -42,6 +42,10 @@ def plot_dendrogram(model, **kwargs):
     sph.dendrogram(linkage_matrix, **kwargs)
 
 
+#def group_collect_intel():
+
+
+
 if __name__ == '__main__':
 
     ipy = get_ipython()
@@ -54,7 +58,7 @@ if __name__ == '__main__':
 
     print(f"Loading data from {sys.argv[1]}")
     ips = utils.load_clusters_ips(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
-    clusters, dfnerd = utils.load_results(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
+    clusters, activity, dfnerd = utils.load_results(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
 
     intervals = len(ips.groupby('interval').agg('count'))
 
@@ -64,6 +68,7 @@ if __name__ == '__main__':
     # following two are alligned now
     X = ips.reset_index()
     clusters.reset_index(inplace=True)
+    activity.reset_index(inplace=True)
 
     # group clusters across time with each other, clusters are disjunct in one day, but might not be across days
     print(f"Finding groups with {sys.argv[5]} tolerance")
@@ -100,7 +105,12 @@ if __name__ == '__main__':
 
     groups = groups.join(clusters[['types', 'origins', 'tags']].groupby(X['group'])\
         .agg(lambda x: list(set([item for sublist in list(x) for item in sublist]))))
+    groups = groups.join(clusters[['events', 'min_activity', 'min_blocks', 'score']].groupby(X['group'])\
+        .agg(sum))
+
     groups['ips'] = ipsSuper
+    groups['min_mean_activity'] = activity.loc[:, map(lambda x :x not in ['labels', 'interval'], list(activity.columns))]\
+        .apply(lambda x: np.mean(x[x > 0]), axis=1).groupby(X['group']).agg(min)
 
     print('Groups that occured more than once:')
     print(groups.loc[groups['occurence'] > 1, :])

@@ -356,9 +356,6 @@ def store_analysis2(path, df, clusters, series):
     return
 
 
-
-
-
 def load_analysis(path):
     where = Path(path)
     if where.is_dir():
@@ -378,6 +375,7 @@ def load_analysis(path):
 
 def load_results(rng, root, load_nerd=False):
 
+    activity = pd.DataFrame()
     clusters = pd.DataFrame()
     nerd = pd.DataFrame()
 
@@ -387,13 +385,18 @@ def load_results(rng, root, load_nerd=False):
 
         if where.is_dir():
             clusters_part = pd.read_pickle(str(where)+'/clusters.pcl')
+            activity_part = pd.read_pickle(str(where)+'/series.pcl')
+            clusters = pd.concat([clusters, clusters_part.assign(interval=interval)])
+            activity = pd.concat([activity, activity_part.assign(interval=interval)])
 
-            clusters = pd.concat([clusters, clusters_part.assign(day=interval)])
             if load_nerd:
-                nerd_part = pd.read_pickle(str(where)+'/nerd.pcl')
-                nerd = pd.concat([nerd, nerd_part.assign(interval=interval)])
+                try:
+                    nerd_part = pd.read_pickle(str(where)+'/nerd.pcl')
+                    nerd = pd.concat([nerd, nerd_part.assign(interval=interval)])
+                except Exception:
+                    pass
 
-    return clusters, nerd
+    return clusters, activity, nerd
 
 
 def load_clusters_ips(rng, root):
@@ -412,6 +415,7 @@ def load_clusters_ips(rng, root):
 
     return res.fillna(0)
 
+
 # Purpose of this is to expand daterange to respect left and right intervals, because
 # this is how analysis is stored.
 def expand_range(dfrom, dto, freq):
@@ -421,6 +425,7 @@ def expand_range(dfrom, dto, freq):
 
 def list_list_tolist(x):
     return [item for sublist in x for item in sublist]
+
 
 def parse_analysis_date(analysis_date):
     lst=analysis_date.split("_")
@@ -437,7 +442,7 @@ def parse_analysis_date(analysis_date):
     return dt_from, dt_to, dirname
 
 
-# Utillity functions for storing experiment results
+# Utility functions for storinsresults
 def store_named_df(path, df_dict):
     where = Path(path)
     where.mkdir(parents=True, exist_ok=True)
@@ -445,11 +450,19 @@ def store_named_df(path, df_dict):
         df.to_pickle(f"{str(where)}/{fname}.pcl")
     return
 
-# Utillity functions for loading experiment results
+
+# Utility functions for loading experiment results
 def load_named_df(path, fname_list):
     results = dict()
     where = Path(path)
     if where.is_dir():
         for fname in fname_list:
-            results[fname] = pd.read_pickle(f"{str(where)}/{fname}.pcl")
+            results[fname] = pd.read_pickle(f"{str(where)}\\{fname}.pcl")
+    else:
+        raise FileNotFoundError
+
     return results
+
+
+def get_list_of_dummies(X):
+    return X.apply(lambda x: (X.columns.to_series().loc[x > 0]).to_list(), axis=1)
