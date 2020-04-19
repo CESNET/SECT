@@ -45,7 +45,7 @@ class TemporalClusterer:
         self.pairwise = pd.DataFrame()
 
         self.method = method
-        ['agglomerative', 'hdbscan'].index(self.method)
+        ['agglomerative', 'hdbscan', 'match'].index(self.method)
 
 
 
@@ -194,10 +194,18 @@ class TemporalClusterer:
                         labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
                         #Filter smaller clusters then minimum
                         labels = labels.loc[labels.map(labels.value_counts()) >= self.min_cluster_size]
+
                     elif self.method == 'match':
-                        pass
-                        #TODO match clustering
-                        #vect.loc[pairwise.index,:].groupby(list(range(0, len(vect)))).agg('count').unstack('index')
+                        labels = sc.AgglomerativeClustering(
+                            affinity='precomputed',
+                            linkage='complete',
+                            distance_threshold=0.001,
+                            n_clusters=None
+                        ).fit_predict(self.pairwise.astype(np.float))
+
+                        labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
+                        #Filter smaller clusters then minimum
+                        labels = labels.loc[labels.map(labels.value_counts()) >= self.min_cluster_size]
 
                     labels_ofs = labels.max() + 1
                     labelsAll.loc[labels.index] = labels

@@ -109,7 +109,7 @@ if __name__ == '__main__':
         .agg(sum))
 
     groups['ips'] = ipsSuper
-    groups['min_mean_activity'] = activity.loc[:, map(lambda x :x not in ['labels', 'interval'], list(activity.columns))]\
+    groups['quality_measure'] = activity.loc[:, map(lambda x :x not in ['labels', 'interval'], list(activity.columns))]\
         .apply(lambda x: np.mean(x[x > 0]), axis=1).groupby(X['group']).agg(min)
 
     print('Groups that occured more than once:')

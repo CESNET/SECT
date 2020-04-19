@@ -26,4 +26,4 @@ ShowWindow(GetConsoleWindow(), SW_HIDE) & exit
 https://superuser.com/a/1069983/377667
 
 ##Then ssh with tunneling
-server to client - 8000 localhost:8888 %8000 is local
+server to client - 8000 localhost:8888, port 8000 is local
