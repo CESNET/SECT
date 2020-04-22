@@ -26,7 +26,7 @@ if __name__ == '__main__':
         (df, file_list) = load_files(sys.argv[1], intervals[idx].date().isoformat(), intervals[idx+days-1].date().isoformat())
 
         #print("Clustering")
-        tc = TemporalClusterer.TemporalClusterer(min_events=0, min_activity=0, max_activity=1, aggregation=sys.argv[4])
+        tc = TemporalClusterer.TemporalClusterer(min_events=1, min_activity=0, max_activity=1, aggregation=sys.argv[5])
         dft = tc.transform(df, [])
         dft['index'] = idx
         result = pd.concat([result, dft])
@@ -39,8 +39,8 @@ if __name__ == '__main__':
     series = pd.DataFrame(data=np.stack(result.series), index=result.index)
     series['ip'] = series.index
     series['activity'] = result.activity
-    groups = series.loc[result['index'] == 0, :].groupby(list(range(0, 96))).agg(['count', 'min']).values
-    groups = pd.DataFrame(data=groups, columns=('count', 'ip', 'count2', 'activity'))
+    groups = series.loc[result['index'] == 0, :].groupby(list(range(0, tc.vect_len)))\
+        .agg(group_size=('activity','count'), activity=('activity', 'min'))
 
 
     approx=pd.DataFrame([val.replace(',','.').split('\t') for val in """2	0,058767512	0,01326454	2,90964E-05	8,65661E-08	3,76475E-10
@@ -65,20 +65,21 @@ if __name__ == '__main__':
 
     approx.index=approx[0]
     approx.columns+=1
-    ax = approx.loc[:,2:].plot(xticks=approx.index, title='Probability estimate for n-fold random matches in data')
-    ax.set_xlabel('n_tuple')
-    ax.set_ylabel("probability")
-    print(approx.loc[:,2:].sum().to_latex())
+    #ax = approx.loc[:,2:].plot(xticks=approx.index, title='Probability estimate for n-fold random matches in data')
+    #ax.set_xlabel('n_tuple')
+    #ax.set_ylabel("probability")
+    #print(approx.loc[:,2:].sum().to_latex())
 
     sumdf=pd.DataFrame()
-    for val in range(1,97):
-        tmp=pd.DataFrame(np.histogram(groups.loc[groups[('activity','min')] == val, ('activity','count')],
-                                     bins=list(range(1, 22, 1))+[10000]))
-        sumdf=pd.concat([sumdf,tmp])
-    sumdf=sumdf.loc[0,:]
-    sumdf.index=list(range(1,97))
-    sumdf.columns=list(range(1, 22, 1))+[10000]
-    sumdf=sumdf.iloc[:,:-1]
+    stopper=max(tc.vect_len+1,100)
+    for val in range(1,stopper):
+        tmp=pd.DataFrame(np.histogram(groups.loc[groups['activity'] == val, 'group_size'],
+                                     bins=list(range(1, stopper))))
+        sumdf=pd.concat([sumdf, tmp])
+    sumdf=sumdf.loc[0, :]
+    sumdf.index=list(range(1, stopper))
+    sumdf.columns=list(range(1, stopper))
+    sumdf=sumdf.iloc[:, :-1]
 
     act_ips = result.groupby('activity')['count'].agg('sum')
     observed_pst=sumdf.T/(sumdf.T.sum())

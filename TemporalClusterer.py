@@ -40,7 +40,7 @@ class TemporalClusterer:
         self.prune =  dist_threshold is not None
         self.sample = sample
 
-        self.vect_len = 0
+        self.vect_len = np.int(0)
         self.features = pd.DataFrame()
         self.pairwise = pd.DataFrame()
 
@@ -87,11 +87,11 @@ class TemporalClusterer:
 
     def transform(self, df, labels):
 
-        df.timestamp = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
+        intervals = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
 
-        data = df.groupby('ip')['timestamp'].agg([list, 'count'])
+        data = intervals.groupby(df['ip']).agg([list, 'count'])
 
-        self.vect_len = df.timestamp.max() + 1
+        self.vect_len = np.int(intervals.max() + 1)
 
         if self.min_events is None:
             self.min_events = np.ceil(self.vect_len*self.min_activity)
@@ -126,7 +126,7 @@ class TemporalClusterer:
 
         labelsAll = pd.Series(data=-1, index=dataAll.index)
 
-        limit = 20000
+        limit = 40000
 
         if len(dataAll) > 0:
 
@@ -163,9 +163,9 @@ class TemporalClusterer:
 
                 # prune features/distance matrix
                 if self.prune:
-                    matches = pairwise.apply(lambda x: np.sum(x < self.dist_threshold))\
+                    matches = pairwise.apply(lambda x: np.sum(x <= self.dist_threshold))\
                         .where(lambda x: x > self.min_cluster_size)\
-                        .dropna()
+                        .dropna()  #there is +1
 
                     self.pairwise = pairwise.loc[matches.index, matches.index]
                     # input empty array -1 not decided if so.
@@ -207,12 +207,15 @@ class TemporalClusterer:
                         #Filter smaller clusters then minimum
                         labels = labels.loc[labels.map(labels.value_counts()) >= self.min_cluster_size]
 
+                        #labels = self.pairwise.groupby(list(range(0, tc.vect_len))) \
+                        #    .agg(group_size=('activity', 'count'), activity=('activity', 'min'))
+
                     labels_ofs = labels.max() + 1
                     labelsAll.loc[labels.index] = labels
 
         self.features['labels'] = labelsAll
 
-        # takes too long on bigger data, and it is not really necessary
+        # takes too long on bigger data, if it becomes troublous, rewrite would be required
         clusters = x['ip'].apply(lambda c: labelsAll[c] if c in labelsAll.index else -1)
 
         return clusters
@@ -328,7 +331,8 @@ if __name__ == '__main__':
         df_flows = pd.Series(dtype=object)
         df_nerd = pd.DataFrame()
 
-        if sys.argv[7] == 'True':
+        #Works well for one day clustering
+        if sys.argv[7] == 'True': 
             df_flows = clusters_get_flows(top10['ips'], intervals.loc[top10.index])
 
             df_ip = df.loc[df['labels'] > -1, ['ip', 'labels']].loc[df['labels'] > -1]
