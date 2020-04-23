@@ -43,6 +43,7 @@ if __name__ == '__main__':
         .agg(group_size=('activity','count'), activity=('activity', 'min'))
 
 
+    #Write approx code, not to use excel
     approx=pd.DataFrame([val.replace(',','.').split('\t') for val in """2	0,058767512	0,01326454	2,90964E-05	8,65661E-08	3,76475E-10
     3	0,109298033	0,00078717	7,42658E-08	1,20083E-11	3,44333E-15
     4	0,152451457	3,50339E-05	1,42162E-10	1,24927E-15	2,36192E-20
@@ -71,14 +72,14 @@ if __name__ == '__main__':
     #print(approx.loc[:,2:].sum().to_latex())
 
     sumdf=pd.DataFrame()
-    stopper=max(tc.vect_len+1,100)
-    for val in range(1,stopper):
+    max_tuple=21
+    for val in range(1,tc.vect_len+1):
         tmp=pd.DataFrame(np.histogram(groups.loc[groups['activity'] == val, 'group_size'],
-                                     bins=list(range(1, stopper))))
+                                     bins=list(range(1, max_tuple))+[1000]))
         sumdf=pd.concat([sumdf, tmp])
     sumdf=sumdf.loc[0, :]
-    sumdf.index=list(range(1, stopper))
-    sumdf.columns=list(range(1, stopper))
+    sumdf.index=list(range(1, tc.vect_len+1))
+    sumdf.columns=list(range(1, max_tuple))+[1000]
     sumdf=sumdf.iloc[:, :-1]
 
     act_ips = result.groupby('activity')['count'].agg('sum')

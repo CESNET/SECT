@@ -22,11 +22,14 @@ if __name__ == '__main__':
     if ipy is not None:
         ipy.run_line_magic('matplotlib', 'qt')
 
-    param_grid = {'min_events': [8],
-                  'max_activity': [0.8],#np.array(range(6, 9, 1))/10,
-                  'dist_threshold' : [None, 0.2, 0.1, 0.05, 0.025, 0.0125],
-                  'min_cluster_size': [2, 4, 8],
-                  'aggr' : [300, 900, 3600]
+    param_grid = {'min_evetns' : [None, 8],#quantile 75% observed in data, if pruning does not happen limit amount of runs of method
+                  'min_activity': [5/96],
+                  'max_activity': [91/96],#np.array(range(6, 9, 1))/10,
+                  'dist_threshold' : [None, 0.2, 0.1, 0.05, 0.025, 0.0125],#force removal of neighborless entities from pairwise matrix
+                  'min_cluster_size': [5],
+                  'aggr' : [300, 900, 1800],
+                  'method' : ['hdbscan'],
+                  'metric' :['jaccard','hamming','cos']
                   }
 
 

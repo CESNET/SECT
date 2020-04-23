@@ -32,12 +32,12 @@ class TemporalClusterer:
         self.aggregation = np.int(aggregation)
         self.min_cluster_size = np.int(min_cluster_size)
 
-        self.dist_threshold = np.inf
+
+        self.prune = dist_threshold is not None
         if dist_threshold is not None:
             self.dist_threshold = np.float(dist_threshold)
 
         self.metric = metric
-        self.prune =  dist_threshold is not None
         self.sample = sample
 
         self.vect_len = np.int(0)
@@ -109,13 +109,13 @@ class TemporalClusterer:
         data['activity'] = data.series.apply(np.sum)
         data['blocks'] = data.series.apply(count_blocks)
 
-        data = data.loc[((data['activity'] > self.min_activity * self.vect_len) &  # minimal activity
+        data = data.loc[((data['activity'] >= self.min_activity * self.vect_len) &  # minimal activity
                   (data['activity'] <= np.ceil(self.max_activity * self.vect_len))) #&  # maximal activity
                 # (data['blocks'] >= self.min_events))  # pattern requirements
                 # (data['count'] >= self.min_events)
                   , :]
 
-        return data
+        return datac
 
 
     def fit_transform(self, x, y):
@@ -126,7 +126,7 @@ class TemporalClusterer:
 
         labelsAll = pd.Series(data=-1, index=dataAll.index)
 
-        limit = 40000
+        limit = 40000 # 12.8 GiB pairwise
 
         if len(dataAll) > 0:
 
@@ -320,7 +320,7 @@ if __name__ == '__main__':
                                #prune=sys.argv[8]=='True')
         df['labels'] = tc.fit_transform(df, [])
         print("Running post process")
-        (clusters, series, score, ipseries) = tc.post_process(df, file_list)
+        (clusters, series, score, ipseries) = tc.post_process(df, file_list, sys.argv[7]=='True')
 
         # Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
