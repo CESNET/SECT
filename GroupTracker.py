@@ -42,18 +42,17 @@ def plot_dendrogram(model, **kwargs):
     sph.dendrogram(linkage_matrix, **kwargs)
 
 
-#def group_collect_intel():
+# def group_collect_intel():
 
+def run(argv):
+    #argv[1] - where are data
+    #argv[2] - interval
+    #argv[3] - freq of analysis
+    #4...
 
-
-if __name__ == '__main__':
-
-    ipy = get_ipython()
-    if ipy is not None:
-        ipy.run_line_magic('matplotlib', 'qt')
-
-    dfrom = sys.argv[2]#'2020-03-12'
-    dto = sys.argv[3]#'2020-03-18'
+    time_window = sys.argv[2].split("_") # '2020-03-12'
+    dfrom = time_window[0]
+    dto = time_window[-1]  # '2020-03-18'
     freq = sys.argv[4]
 
     print(f"Loading data from {sys.argv[1]}")
@@ -72,7 +71,8 @@ if __name__ == '__main__':
 
     # group clusters across time with each other, clusters are disjunct in one day, but might not be across days
     print(f"Finding groups with {sys.argv[5]} tolerance")
-    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete', distance_threshold=np.float(sys.argv[5]),
+    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete',
+                                            distance_threshold=np.float(sys.argv[5]),
                                             n_clusters=None).fit(X.loc[:, clustCols])
 
     X['group'] = clustering.labels_
@@ -84,7 +84,8 @@ if __name__ == '__main__':
 
     # composition of clusters by days
     series = X[clustCols + ['group', 'interval']].groupby(['group', 'interval']) \
-        .agg(sum).apply(lambda x: (X.columns.to_series().loc[clustCols].loc[x > 0]).to_list(), axis=1).unstack('interval')
+        .agg(sum).apply(lambda x: (X.columns.to_series().loc[clustCols].loc[x > 0]).to_list(), axis=1).unstack(
+        'interval')
     series = series.applymap(lambda x: x if x is not np.nan else [])
 
     # print histogram of surviving days for clusters
@@ -92,29 +93,38 @@ if __name__ == '__main__':
         .agg(occurence=('group', 'count'), intervals=('interval', list), labels=('labels', list)) \
         .sort_values(by='occurence', ascending=False)
 
-
-    twoMore=len(groups.loc[groups['occurence'] > 2, :])
-    oneMore=len(groups.loc[groups['occurence'] > 1, :])
+    twoMore = len(groups.loc[groups['occurence'] > 2, :])
+    oneMore = len(groups.loc[groups['occurence'] > 1, :])
 
     print(('From {} groups, there is {} that did reoccurre and {} that reocurred more than twice.\n' +
            'Ratio for more than two reoccurrences is {}.')
           .format(len(groups), oneMore, twoMore, twoMore / oneMore))
 
-
     # with pd.option_context('display.max_colwidth', None, 'display.max_rows', None):
 
-    groups = groups.join(clusters[['types', 'origins', 'tags']].groupby(X['group'])\
-        .agg(lambda x: list(set([item for sublist in list(x) for item in sublist]))))
-    groups = groups.join(clusters[['events', 'min_activity', 'min_blocks', 'score']].groupby(X['group'])\
-        .agg(sum))
+    groups = groups.join(clusters[['types', 'origins', 'tags']].groupby(X['group']) \
+                         .agg(lambda x: list(set([item for sublist in list(x) for item in sublist]))))
+    groups = groups.join(clusters[['events', 'min_activity', 'min_blocks', 'score']].groupby(X['group']) \
+                         .agg(sum))
 
     groups['ips'] = ipsSuper
-    groups['quality_measure'] = activity.loc[:, map(lambda x :x not in ['labels', 'interval'], list(activity.columns))]\
+    groups['quality_measure'] = activity.loc[:, map(lambda x: x not in ['labels', 'interval'], list(activity.columns))] \
         .apply(lambda x: np.mean(x[x > 0]), axis=1).groupby(X['group']).agg(min)
 
     print('Groups that occured more than once:')
     print(groups.loc[groups['occurence'] > 1, :])
 
-    folder = f"{sys.argv[1]}/groups/{dfrom}_{dto}_{freq}"
+    folder = f"{sys.argv[1]}/{sys.argv[3]}_{dfrom}_{dto}_{freq}"
     utils.store_named_df(folder, dict(zip(['groups', 'series'], [groups, series])))
     print(f'Results stored in: {folder}')
+
+
+if __name__ == '__main__':
+
+    ipy = get_ipython()
+    if ipy is not None:
+        ipy.run_line_magic('matplotlib', 'qt')
+
+    run(sys.argv)
+
+

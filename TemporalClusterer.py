@@ -20,7 +20,7 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 class TemporalClusterer:
     def __init__(self, min_events=None, min_activity=0.05, max_activity=0.8, aggregation=900, min_cluster_size=2, dist_threshold=0.05,
-                 metric='jaccard', method='hdbscan', sample=-1):
+                 metric='jaccard', method='hdbscan', sample=-1, batch_limit=40000):
 
         # filtering params
 
@@ -45,9 +45,15 @@ class TemporalClusterer:
         self.pairwise = pd.DataFrame()
 
         self.method = method
-        ['agglomerative', 'hdbscan', 'match'].index(self.method)
+        if(['agglomerative', 'hdbscan', 'match', 'dbscan'].index(self.method)<0):
+            raise ValueError
 
 
+        self.limit = np.int(batch_limit)
+
+        self.default_dist_threshold=0.05
+
+        self.min_blocks = 2
 
     def series_divide(self, division, series, limit=10000):
 
@@ -87,11 +93,15 @@ class TemporalClusterer:
 
     def transform(self, df, labels):
 
-        intervals = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
+#        intervals = np.floor((df.timestamp - df.timestamp.min())/self.aggregation)
 
-        data = intervals.groupby(df['ip']).agg([list, 'count'])
+#        data = intervals.groupby(df['ip']).agg([list, 'count'])
 
-        self.vect_len = np.int(intervals.max() + 1)
+        df['timestamp'] = np.floor((df.timestamp - df.timestamp.min()) / self.aggregation)
+
+        data = df['timestamp'].groupby(df['ip']).agg([list, 'count'])
+
+        self.vect_len = np.int(df.timestamp.max() + 1)
 
         if self.min_events is None:
             self.min_events = np.ceil(self.vect_len*self.min_activity)
@@ -110,12 +120,12 @@ class TemporalClusterer:
         data['blocks'] = data.series.apply(count_blocks)
 
         data = data.loc[((data['activity'] >= self.min_activity * self.vect_len) &  # minimal activity
-                  (data['activity'] <= np.ceil(self.max_activity * self.vect_len))) #&  # maximal activity
-                # (data['blocks'] >= self.min_events))  # pattern requirements
+                  (data['activity'] <= np.ceil(self.max_activity * self.vect_len))) # &  # maximal activity
+                #  (data['blocks'] >= self.min_blocks))  # pattern requirements
                 # (data['count'] >= self.min_events)
                   , :]
 
-        return datac
+        return data
 
 
     def fit_transform(self, x, y):
@@ -126,16 +136,16 @@ class TemporalClusterer:
 
         labelsAll = pd.Series(data=-1, index=dataAll.index)
 
-        limit = 40000 # 12.8 GiB pairwise
+        #limit  #40000 - 12.8 GiB pairwise matrix size
 
         if len(dataAll) > 0:
 
             division = pd.Series(data=0, index=dataAll.index)
             seriesAll = pd.DataFrame(index=dataAll.index, data=np.stack(dataAll['series']))
 
-            if len(dataAll) > limit:
+            if len(dataAll) > self.limit:
 
-                division = self.series_divide(division, seriesAll, limit=limit*0.7)
+                division = self.series_divide(division, seriesAll, limit=self.limit*0.7)
 
             z = division.value_counts()
 
@@ -148,33 +158,37 @@ class TemporalClusterer:
                 if len(data) == 0:
                     continue
                 # if group is too big, take head, most active with most blocks or sample...
-                if len(data) > limit:
+                if len(data) > self.limit:
                     #data.sort_values(inplace=True, ascending=False, by=['activity', 'blocks'])
                     data.sort_values(inplace=True, ascending=False, by=['count'])
 
 
-                    vect = vect.loc[data.head(limit).index,:]
-                    print(f"Data too big, reduced count from {len(data)} to {limit}", file=sys.stderr)
+                    vect = vect.loc[data.head(self.limit).index,:]
+                    print(f"Data too big, reduced count from {len(data)} to {self.limit}", file=sys.stderr)
 
                 # calculate distance matrix and prepare fro clustering
-                pairwise = pd.DataFrame(squareform(pdist(vect, self.metric)), index=vect.index,
-                                        columns=vect.index,
-                                        dtype=np.float16)
 
-                # prune features/distance matrix
-                if self.prune:
-                    matches = pairwise.apply(lambda x: np.sum(x <= self.dist_threshold))\
-                        .where(lambda x: x > self.min_cluster_size)\
-                        .dropna()  #there is +1
 
-                    self.pairwise = pairwise.loc[matches.index, matches.index]
-                    # input empty array -1 not decided if so.
-                else:
-                    self.pairwise = pairwise
-
-                if len(self.pairwise) > 1:
+                if len(vect) > 1:
                     #try agglomerative
                     if self.method == 'hdbscan':
+
+                        pairwise = pd.DataFrame(squareform(pdist(vect, self.metric)), index=vect.index,
+                                                columns=vect.index,
+                                                dtype=np.float16)
+
+                        # prune features/distance matrix
+                        if self.dist_threshold is not None:
+                            matches = pairwise.apply(lambda x: np.sum(x <= self.dist_threshold)) \
+                                .where(lambda x: x > self.min_cluster_size) \
+                                .dropna()  # there is +1
+
+                            self.pairwise = pairwise.loc[matches.index, matches.index]
+                            # input empty array -1 not decided if so.
+                        else:
+                            self.pairwise = pairwise
+
+
                         labels = hdbscan.HDBSCAN(
                             min_cluster_size=self.min_cluster_size,
                             metric='precomputed',
@@ -183,25 +197,38 @@ class TemporalClusterer:
 
                         labels = pd.Series(labels + labels_ofs, index=self.pairwise.index)
 
+
+                    elif self.method == 'dbscan':
+                        eps = self.dist_threshold
+                        if self.dist_threshold is None:
+                            eps = self.default_dist_threshold
+                        labels = sc.dbscan(eps=eps, min_samples=self.min_cluster_size,
+                                           metric=self.metric
+                        ).fit_predict(vect)
+
+                        labels = pd.Series(labels + labels_ofs, index=self.pairwise.index)
+
+
                     elif self.method == 'agglomerative':
                         labels = sc.AgglomerativeClustering(
-                            affinity='precomputed',
+                            affinity=self.metric,
                             linkage='complete',
                             distance_threshold=self.dist_threshold,
                             n_clusters=None
-                        ).fit_predict(self.pairwise.astype(np.float))
+                        ).fit_predict(vect)
 
                         labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
                         #Filter smaller clusters then minimum
                         labels = labels.loc[labels.map(labels.value_counts()) >= self.min_cluster_size]
 
+
                     elif self.method == 'match':
                         labels = sc.AgglomerativeClustering(
-                            affinity='precomputed',
+                            affinity=self.metric,
                             linkage='complete',
-                            distance_threshold=0.001,
+                            distance_threshold=0.0001,
                             n_clusters=None
-                        ).fit_predict(self.pairwise.astype(np.float))
+                        ).fit_predict(vect)
 
                         labels = pd.Series(labels+labels_ofs, index=self.pairwise.index)
                         #Filter smaller clusters then minimum
@@ -303,36 +330,44 @@ class TemporalClusterer:
         return (len(series), x.describe())
 
 
-if __name__ == '__main__':
+def run(argv):
 
-    # Import the necessaries libraries
+    # argv = ['./',  # path
+    #         data_loc,  # data loc
+    #         analysis_date[0],  # dfrom_to
+    #         analysis_date[1],  # dto
+    #         5 / 96,  # min act
+    #         91 / 96,  # max act
+    #         0.05,  # dist_thresh
+    #         'False',  # dowload 3.rd party data / extended analysis
+    #         'hdbscan']  # method
 
+    time_window = argv[2].split("_")
 
-    # Set notebook mode to work in offline
-    # from scipy.cluster.hierarchy import dendrogram, linkage
-    # Load preprocessed files
-    for day in pd.date_range(sys.argv[2], sys.argv[3]):
+    for day in pd.date_range(time_window[0], time_window[-1]):
         print("Processing files")
-        (df, file_list) = load_files(sys.argv[1], day.date().isoformat(), day.date().isoformat())
+        (df, file_list) = load_files(argv[1], day.date().isoformat(), day.date().isoformat())
 
         print("Clustering")
-        tc = TemporalClusterer(min_activity=sys.argv[4], max_activity=sys.argv[5], dist_threshold=sys.argv[6], method=sys.argv[8] )
-                               #prune=sys.argv[8]=='True')
+        tc = TemporalClusterer(min_activity=argv[4], max_activity=argv[5], dist_threshold=argv[6],
+                                                 method=argv[8], batch_limit=40000)
+        # prune=argv[8]=='True')
         df['labels'] = tc.fit_transform(df, [])
         print("Running post process")
-        (clusters, series, score, ipseries) = tc.post_process(df, file_list, sys.argv[7]=='True')
+        (clusters, series, score, ipseries) = tc.post_process(df, file_list, query_nerd=(argv[7] == 'True'))
 
         # Ranking of clusters, to pick what to focus on
         top10 = clusters.sort_values(by=['score', 'size'], ascending=False).head(10)
 
-        intervals = sample_intervals(series, file_list[0], tc.aggregation) # tc.aggregations should be same as with series
+        intervals = sample_intervals(series, file_list[0], tc.aggregation)
+        # tc.aggregations should be same as with series
 
         # only if you want flows and more data
         df_flows = pd.Series(dtype=object)
         df_nerd = pd.DataFrame()
 
-        #Works well for one day clustering
-        if sys.argv[7] == 'True': 
+        # Works well for one day clustering
+        if argv[7] == 'True':
             df_flows = clusters_get_flows(top10['ips'], intervals.loc[top10.index])
 
             df_ip = df.loc[df['labels'] > -1, ['ip', 'labels']].loc[df['labels'] > -1]
@@ -345,21 +380,29 @@ if __name__ == '__main__':
 
             df_flow_views = flows_get_views(df_flows)
 
-            store_analysis(f'./data/{file_list[0]}_{file_list[-1]}/', df.loc[df['labels']>-1, :], clusters, series,
-                       df_nerd, df_flows, df_flow_views[0], df_flow_views[1])
+            store_analysis(f'./{argv[1]}/{argv[3]}/{file_list[0]}_{file_list[-1]}/', df.loc[df['labels'] > -1, :], clusters,
+                                 series,
+                                 df_nerd, df_flows, df_flow_views[0], df_flow_views[1])
 
         else:
-            store_analysis2(f'./data/{sys.argv[8]}/{file_list[0]}_{file_list[-1]}/', df.loc[df['labels'] > -1, :], clusters, series)
-
-
-        from IPython import get_ipython
-
-        ipy = get_ipython()
-        if ipy is not None:
-            ipy.run_line_magic('matplotlib', 'qt')
+            store_named_df(f'./{argv[1]}/{argv[3]}/{file_list[0]}_{file_list[-1]}/',
+                           dict(zip(['events', 'clusters', 'series', 'dfnerd'], [df.loc[df['labels'] > -1, :], clusters, series, df_nerd])))
 
         sns.heatmap(series)
-        print(clusters.loc[top10.index,['size','events','ips','score','tags']])
+        print(clusters.loc[top10.index, ['size', 'events', 'ips', 'score', 'tags']])
+
+        return
+
+if __name__ == '__main__':
+
+    from IPython import get_ipython
+
+    ipy = get_ipython()
+    if ipy is not None:
+        ipy.run_line_magic('matplotlib', 'qt')
+
+    run(sys.argv)
+
     #%%
     # print(clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']])
     # clusters[['events', 'min_activity', 'min_blocks', 'tfrom', 'tto', 'origins', 'types']].hist()
