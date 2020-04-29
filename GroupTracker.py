@@ -114,7 +114,7 @@ def run(argv):
     print('Groups that occured more than once:')
     print(groups.loc[groups['occurence'] > 1, :])
 
-    folder = f"{sys.argv[1]}/{sys.argv[3]}_{dfrom}_{dto}_{freq}"
+    folder = f"{sys.argv[1]}/{sys.argv[3]}/{dfrom}_{dto}_{freq}"
     utils.store_named_df(folder, dict(zip(['groups', 'series'], [groups, series])))
     print(f'Results stored in: {folder}')
 
