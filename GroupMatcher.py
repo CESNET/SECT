@@ -24,10 +24,10 @@ from IPython import get_ipython
 
 def run(argv):
 
-    time_window = sys.argv[3].split("_")
+    time_window = argv[3].split("_")
     dfrom = time_window[0]  # '2020-03-12'
     dto = time_window[-1]   # '2020-03-18'
-    freq = sys.argv[5]
+    freq = argv[5]
 
     methods = [path.strip(" ") for path in argv[2].split('~')]
     paths = [f"{argv[1]}/{method}/{dfrom}_{dto}_{freq}" for method in methods]

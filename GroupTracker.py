@@ -44,20 +44,22 @@ def plot_dendrogram(model, **kwargs):
 
 # def group_collect_intel():
 
-def run(argv):
+def run(argv, min_size):
     #argv[1] - where are data
     #argv[2] - interval
     #argv[3] - freq of analysis
     #4...
 
-    time_window = sys.argv[2].split("_") # '2020-03-12'
+    time_window = argv[2].split("_") # '2020-03-12'
     dfrom = time_window[0]
     dto = time_window[-1]  # '2020-03-18'
-    freq = sys.argv[4]
+    freq = argv[4]
 
-    print(f"Loading data from {sys.argv[1]}")
-    ips = utils.load_clusters_ips(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
-    clusters, activity, dfnerd = utils.load_results(utils.expand_range(dfrom, dto, freq=freq), sys.argv[1])
+    print(f"Loading data from {argv[1]}")
+    ips = utils.load_clusters_ips(utils.expand_range(dfrom, dto, freq=freq), argv[1])
+    clusters, activity, dfnerd = utils.load_results(utils.expand_range(dfrom, dto, freq=freq), argv[1])
+
+
 
     intervals = len(ips.groupby('interval').agg('count'))
 
@@ -69,13 +71,17 @@ def run(argv):
     clusters.reset_index(inplace=True)
     activity.reset_index(inplace=True)
 
-    # group clusters across time with each other, clusters are disjunct in one day, but might not be across days
-    print(f"Finding groups with {sys.argv[5]} tolerance")
-    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete',
-                                            distance_threshold=np.float(sys.argv[5]),
-                                            n_clusters=None).fit(X.loc[:, clustCols])
+    # filter
+    filteredips = list(set(utils.list_list_tolist(clusters.loc[clusters['size'] >= min_size, 'ips'])))
+    xrowfilter = X.loc[:, filteredips].sum(axis=1) > 0
 
-    X['group'] = clustering.labels_
+    # group clusters across time with each other, clusters are disjunct in one day, but might not be across days
+    print(f"Finding groups with {argv[5]} tolerance")
+    clustering = sc.AgglomerativeClustering(affinity='jaccard', linkage='complete',
+                                            distance_threshold=np.float(argv[5]),
+                                            n_clusters=None).fit(X.loc[xrowfilter, filteredips])
+    X=X.assign(group=-1)
+    X.loc[xrowfilter,'group'] = clustering.labels_
 
     # print member ips of surviving groups
     ipsSuper = X[clustCols + ['group']].groupby('group') \
@@ -114,8 +120,8 @@ def run(argv):
     print('Groups that occured more than once:')
     print(groups.loc[groups['occurence'] > 1, :])
 
-    folder = f"{sys.argv[1]}/{sys.argv[3]}/{dfrom}_{dto}_{freq}"
-    utils.store_named_df(folder, dict(zip(['groups', 'series'], [groups, series])))
+    folder = f"{argv[1]}/{argv[3]}/{dfrom}_{dto}_{freq}"
+    utils.store_named_df(folder, dict(zip(['groups', 'series'], [groups[groups.index>=0], series[groups.index>=0]])))
     print(f'Results stored in: {folder}')
 
 
@@ -125,6 +131,6 @@ if __name__ == '__main__':
     if ipy is not None:
         ipy.run_line_magic('matplotlib', 'qt')
 
-    run(sys.argv)
+    run(sys.argv, 3)
 
 

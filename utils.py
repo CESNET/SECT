@@ -210,6 +210,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, que
     #score['type_tag'] = False
     score['series_is_not_consistent'] = series.apply(lambda x: x.loc[x > 0].mean() < 0.7, axis=1) * -5
 
+    df_nerd = pd.DataFrame()
     if query_nerd:
         nerdC = nerd.NerdC()
         df_nerd = cluster.ips.apply(nerdC.ip_req)
@@ -230,7 +231,7 @@ def rank_clusters(cluster, series, cluster_type_count, cluster_origin_count, que
 
     tag_list = tags.apply(lambda row: [item for sublist in row for item in sublist], axis=1)
 
-    return score_sum, score, tag_list
+    return score_sum, score, tag_list, df_nerd
 
 
 def clusters_get_flows(cluster, interval, dc_conn=None):
@@ -396,7 +397,7 @@ def load_results(rng, root, load_nerd=False):
                 except Exception:
                     pass
 
-    return clusters, activity, nerd
+    return clusters[clusters.index>=0], activity[clusters.index>=0], nerd
 
 
 def load_clusters_ips(rng, root):
@@ -408,7 +409,7 @@ def load_clusters_ips(rng, root):
 
         if where.is_dir():
             clusters = pd.read_pickle(str(where)+'/clusters.pcl')
-
+            clusters = clusters[clusters.index>=0]
             X = pd.get_dummies(clusters.ips.apply(pd.Series))
             X.columns = pd.Series(X.columns).apply(lambda x: x.split('_')[1])
             res = pd.concat([res, X.assign(interval=interval)])
@@ -466,3 +467,28 @@ def load_named_df(path, fname_list):
 
 def get_list_of_dummies(X):
     return X.apply(lambda x: (X.columns.to_series().loc[x > 0]).to_list(), axis=1)
+
+
+import sklearn.cluster as sc
+import umap
+import hdbscan
+import scipy.spatial.distance as scdist
+
+
+def process_tags(df, cluster, tag_dummies, sensitivity):
+
+    ipAll = df.ip.unique()
+    tag_dummies.index=tag_dummies.index.astype(str)
+    ext_tag_dummies = pd.DataFrame(tag_dummies, index=list(set(ipAll.tolist() + tag_dummies.index.to_series().tolist())), columns=tag_dummies.columns)
+    ext_tag_dummies.fillna(False, inplace=True)
+    totals = ext_tag_dummies.loc[ipAll, :].sum(axis=0)
+    normal = totals/totals.sum()
+
+    clust_tags = cluster.ips.transform(lambda x: ext_tag_dummies.loc[x, :].sum())
+    clust_tags_norm = (clust_tags.T / (clust_tags.T.sum())).T  # avoid zero division
+    clust_tags_norm.fillna(0, inplace=True)
+    test_tags = get_list_of_dummies(clust_tags_norm.applymap(lambda x: x > sensitivity))
+
+    hist_difference = clust_tags_norm.apply(lambda x: scdist.cosine(x, normal), axis=1)
+
+    return test_tags, hist_difference

@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
         print("Clustering")
         tc = TemporalClusterer.TemporalClusterer(min_events=sys.argv[5], max_activity=sys.argv[6],
-                                                 dist_threshold=sys.argv[7], min_cluster_size=5)
+                                                 dist_threshold=sys.argv[7], prune_distmat=False)
         df['labels'] = tc.fit_transform(df, [])
 
         print("Running post process")
