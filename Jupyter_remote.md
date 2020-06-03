@@ -26,4 +26,7 @@ ShowWindow(GetConsoleWindow(), SW_HIDE) & exit
 https://superuser.com/a/1069983/377667
 
 ##Then ssh with tunneling
-server to client - 8000 localhost:8888, port 8000 is local
+client to server - 8000 localhost:8888, port 8000 is local
+
+##Using cmdline on windows, this connects to metacenter
+ssh -A -X -i~/.ssh/metacentrum centos@78.128.250.68

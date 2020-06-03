@@ -151,7 +151,7 @@ def cumulative_unique_counts(set_list):
 def load_files(working_dir, date_from, date_to, idea_dir=None):
 
     if idea_dir == None:
-        idea_dir = working_dir+'\\IDEA'
+        idea_dir = working_dir+'/IDEA'
 
     file_list = [x.date().isoformat() for x in pd.date_range(date_from, date_to)]
     days = len(file_list)
@@ -160,15 +160,15 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
 
     for file_name in file_list:
 
-        file_obj = Path(working_dir + '\\' + file_name + '.pcl')
+        file_obj = Path(working_dir + '/' + file_name + '.pcl')
 
         if file_obj.is_file():
             df = pd.concat([df, pd.read_pickle(file_obj)], ignore_index=True)
 
         elif not file_obj.exists():
             #we need to preprocess the idea file
-            idea_file_obj = Path(idea_dir + "\\" + file_name + '.idea')
-            gz_file_obj = Path(idea_dir + "\\" + file_name + '.gz')
+            idea_file_obj = Path(idea_dir + "/" + file_name + '.idea')
+            gz_file_obj = Path(idea_dir + "/" + file_name + '.gz')
 
             df_prep = pd.DataFrame()
 
@@ -185,8 +185,8 @@ def load_files(working_dir, date_from, date_to, idea_dir=None):
         else:
             print(f"Can't process file {str(file_obj).rsplit('.')[0]}.(pcl|gz), it is not a file")
 
-    tfrom = datetime.datetime.strptime('{} 00:00:00'.format(file_list[0]),timeFormat).timestamp()
-    tto = datetime.datetime.strptime('{} 23:59:59'.format(file_list[-1]), timeFormat).timestamp()
+    tfrom = datetime.datetime.strptime(file_list[0], dateFormat).timestamp()
+    tto = (datetime.datetime.strptime(file_list[-1], dateFormat)+datetime.timedelta(hours=23,minutes=59,seconds=59)).timestamp()
 
     return df.loc[(df['timestamp'] >= tfrom) & (df['timestamp'] < tto), :], file_list
 
@@ -458,7 +458,7 @@ def load_named_df(path, fname_list):
     where = Path(path)
     if where.is_dir():
         for fname in fname_list:
-            results[fname] = pd.read_pickle(f"{str(where)}\\{fname}.pcl")
+            results[fname] = pd.read_pickle(f"{str(where)}/{fname}.pcl")
     else:
         raise FileNotFoundError
 
@@ -469,15 +469,18 @@ def get_list_of_dummies(X):
     return X.apply(lambda x: (X.columns.to_series().loc[x > 0]).to_list(), axis=1)
 
 
+def get_dummies(X):
+    pass
+
+
 import sklearn.cluster as sc
 import umap
 import hdbscan
 import scipy.spatial.distance as scdist
 
 
-def process_tags(df, cluster, tag_dummies, sensitivity):
+def process_tags(ipAll, cluster, tag_dummies, sensitivity):
 
-    ipAll = df.ip.unique()
     tag_dummies.index=tag_dummies.index.astype(str)
     ext_tag_dummies = pd.DataFrame(tag_dummies, index=list(set(ipAll.tolist() + tag_dummies.index.to_series().tolist())), columns=tag_dummies.columns)
     ext_tag_dummies.fillna(False, inplace=True)
@@ -489,6 +492,14 @@ def process_tags(df, cluster, tag_dummies, sensitivity):
     clust_tags_norm.fillna(0, inplace=True)
     test_tags = get_list_of_dummies(clust_tags_norm.applymap(lambda x: x > sensitivity))
 
-    hist_difference = clust_tags_norm.apply(lambda x: scdist.cosine(x, normal), axis=1)
+    hist_difference = clust_tags_norm.apply(lambda x: scdist.cosine(x, normal), axis=1).astype(np.float)
 
     return test_tags, hist_difference
+
+
+def group_to_idea(x):
+    pass
+    #process x.ips
+    #stats in groups events, activity, cluster quality measure?, confidence ?
+    #looks like list of dictionaries
+
